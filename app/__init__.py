@@ -29,6 +29,7 @@ def create_app(config_name=None):
     from .blueprints.health import health_bp
     from .blueprints.adoptions import adoptions_bp
     from .blueprints.admin import admin_bp
+    from .blueprints.avisos import avisos_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(core_bp)
@@ -36,6 +37,7 @@ def create_app(config_name=None):
     app.register_blueprint(health_bp)
     app.register_blueprint(adoptions_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(avisos_bp)
 
     # Handlers de erro no padrão JSON (Back-end / APIs)
     @app.errorhandler(400)

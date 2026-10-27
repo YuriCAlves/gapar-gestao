@@ -42,8 +42,13 @@ class Animal(db.Model):
     
     # Flags operacionais especiais (RF08, RN07)
     is_castrado = db.Column(db.Boolean, default=False, nullable=False)
+    is_microchipado = db.Column(db.Boolean, default=False, nullable=False)
     is_idoso = db.Column(db.Boolean, default=False, nullable=False)
     cuidados_especiais = db.Column(db.Text, nullable=True)
+
+    # Localização e identificação (protótipos)
+    localizacao_baia = db.Column(db.String(100), nullable=True)
+    codigo_identificador = db.Column(db.String(50), nullable=True, index=True)
     
     # Status Operacional (RN01: inicial obrigatório 'em acolhimento')
     status_operacional = db.Column(
