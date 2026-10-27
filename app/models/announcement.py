@@ -14,8 +14,8 @@ class Announcement(db.Model):
     is_urgente = db.Column(db.Boolean, default=False, nullable=False)
     is_fixado = db.Column(db.Boolean, default=False, nullable=False)
 
-    autor_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    animal_id = db.Column(db.Integer, db.ForeignKey("animals.id"), nullable=True)
+    autor_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    animal_id = db.Column(db.Integer, db.ForeignKey("animals.id", ondelete="SET NULL"), nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
 
@@ -41,8 +41,8 @@ class AnnouncementAck(db.Model):
     __tablename__ = "announcement_acks"
 
     id = db.Column(db.Integer, primary_key=True)
-    announcement_id = db.Column(db.Integer, db.ForeignKey("announcements.id"), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    announcement_id = db.Column(db.Integer, db.ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     tipo_confirmacao = db.Column(db.String(20), default="CIENTE")
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 

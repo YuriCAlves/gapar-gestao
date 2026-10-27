@@ -90,8 +90,11 @@ class Animal(db.Model):
             "data_entrada": self.data_entrada.isoformat() if self.data_entrada else None,
             "motivo_resgate": self.motivo_resgate,
             "is_castrado": self.is_castrado,
+            "is_microchipado": self.is_microchipado,
             "is_idoso": self.is_idoso,
             "cuidados_especiais": self.cuidados_especiais,
+            "localizacao_baia": self.localizacao_baia,
+            "codigo_identificador": self.codigo_identificador,
             "status_operacional": self.status_operacional,
             "congelado": self.is_frozen,
             "created_at": self.created_at.isoformat() if self.created_at else None

@@ -9,7 +9,7 @@ class AuditLog(db.Model):
     __tablename__ = "audit_logs"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     user_email = db.Column(db.String(120), nullable=True) # Mantido caso a usuária seja removida
     
     acao = db.Column(db.String(50), nullable=False) # 'INSERCAO', 'EDICAO', 'DESATIVACAO', 'ADOCAO', etc.

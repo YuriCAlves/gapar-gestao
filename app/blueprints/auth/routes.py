@@ -11,7 +11,7 @@ def auth_status():
             "autenticado": True,
             "email": current_user.email,
             "role": current_user.role,
-            "ativo": current_user.active
+            "ativo": current_user.is_active
         }), 200
     return jsonify({
         "autenticado": False,

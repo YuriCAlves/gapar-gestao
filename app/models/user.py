@@ -29,6 +29,11 @@ class User(UserMixin, db.Model):
     def is_admin(self):
         return self.role == "Administradora"
 
+    @property
+    def active(self):
+        """Compatibilidade para acessos como current_user.active."""
+        return self.is_active
+
     def to_dict(self):
         return {
             "id": self.id,

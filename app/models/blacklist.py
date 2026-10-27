@@ -15,7 +15,8 @@ class NonEligiblePerson(db.Model):
     motivo_impedimento = db.Column(db.Text, nullable=False) # Histórico de maus-tratos ou negligência
     
     # Registrado por quem (auditoria interna)
-    cadastrado_por_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    cadastrado_por_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    cadastrado_por = db.relationship("User", foreign_keys=[cadastrado_por_user_id])
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     def to_dict(self):
