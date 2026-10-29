@@ -39,6 +39,17 @@ def create_app(config_name=None):
     app.register_blueprint(admin_bp)
     app.register_blueprint(avisos_bp)
 
+    # Middleware per-request para garantir efeito imediato de revogação de acesso (RN14)
+    @app.before_request
+    def enforce_whitelist_status():
+        from flask_login import current_user, logout_user
+        if current_user.is_authenticated and not current_user.is_active:
+            logout_user()
+            return jsonify({
+                "error": "Acesso revogado",
+                "mensagem": "Seu e-mail foi desativado na Whitelist pela administração (RN12/RN14)."
+            }), 403
+
     # Handlers de erro no padrão JSON (Back-end / APIs)
     @app.errorhandler(400)
     def bad_request_error(error):
@@ -75,5 +86,8 @@ def create_app(config_name=None):
             "error": "Erro interno do servidor",
             "mensagem": "Ocorreu um erro inesperado no processamento."
         }), 500
+
+    from .commands import create_admin
+    app.cli.add_command(create_admin)
 
     return app
