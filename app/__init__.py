@@ -17,6 +17,10 @@ def create_app(config_name=None):
     migrate.init_app(app, db)
     login_manager.init_app(app)
 
+
+    from . import models
+
+    
     # Diretório para uploads / arquivos do sistema
     upload_path = app.config.get("UPLOAD_FOLDER")
     if upload_path:

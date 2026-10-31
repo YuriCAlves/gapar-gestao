@@ -1,5 +1,5 @@
 from datetime import date
-from flask import jsonify
+from flask import jsonify, render_template
 from flask_login import login_required
 from . import core_bp
 
@@ -35,3 +35,8 @@ def today_dashboard():
         "medicacoes_hoje": [],
         "vacinas_hoje": []
     }), 200
+
+    
+@core_bp.route("/animais", methods=["GET"])
+def pagina_animais():
+    return render_template("animais.html")
