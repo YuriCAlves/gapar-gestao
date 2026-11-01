@@ -40,3 +40,8 @@ def today_dashboard():
 @core_bp.route("/animais", methods=["GET"])
 def pagina_animais():
     return render_template("animais.html")
+
+
+@core_bp.route("/animais/novo", methods=["GET"])
+def novo_animal():
+    return render_template("animal_formulario.html")
