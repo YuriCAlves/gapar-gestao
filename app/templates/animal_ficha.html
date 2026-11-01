@@ -23,6 +23,10 @@
         src="{{ url_for('static', filename='js/animal_medicacoes.js', v=3) }}"
         defer
     ></script>
+    <script
+         src="{{ url_for('static', filename='js/animal_adocao.js') }}"
+         defer
+    ></script>
 </head>
 
 <body>
@@ -231,28 +235,16 @@
     {% include "_animal_medicacoes.html" %}
 </section>
 
-        <section
-            id="painel-adocao"
-            class="ficha-painel"
-            role="tabpanel"
-            aria-labelledby="aba-adocao"
-            tabindex="0"
-            hidden
-        >
-            <h2>Adoção</h2>
-
-            {% if animal.status_operacional == "disponível" %}
-                <p class="informacao">
-                    {{ animal.nome }} está disponível para adoção
-                    neste exemplo.
-                </p>
-            {% endif %}
-
-            <div class="ficha-bloco">
-                <h3>Registro de adoção</h3>
-                <p>Nenhuma adoção registrada nesta demonstração.</p>
-            </div>
-        </section>
+<section
+    id="painel-adocao"
+    class="ficha-painel"
+    role="tabpanel"
+    aria-labelledby="aba-adocao"
+    tabindex="0"
+    hidden
+>
+    {% include "_animal_adocao.html" %}
+</section>
 
         <noscript>
             <p>Ative o JavaScript para navegar entre as abas da ficha.</p>
