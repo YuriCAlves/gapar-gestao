@@ -15,6 +15,10 @@
         src="{{ url_for('static', filename='js/animal_ficha.js') }}"
         defer
     ></script>
+    <script
+        src="{{ url_for('static', filename='js/animal_saude.js') }}"
+        defer
+    ></script>    
 </head>
 
 <body>
@@ -201,29 +205,16 @@
             </dl>
         </section>
 
-        <section
-            id="painel-saude"
-            class="ficha-painel"
-            role="tabpanel"
-            aria-labelledby="aba-saude"
-            tabindex="0"
-            hidden
-        >
-            <h2>Saúde</h2>
-
-            <div class="ficha-bloco">
-                <h3>Cartão de vacinação</h3>
-                <p>Nenhuma vacina registrada nesta demonstração.</p>
-            </div>
-
-            <div class="ficha-bloco">
-                <h3>Histórico médico</h3>
-                <p>
-                    Nenhuma consulta, exame ou procedimento registrado
-                    nesta demonstração.
-                </p>
-            </div>
-        </section>
+<section
+    id="painel-saude"
+    class="ficha-painel"
+    role="tabpanel"
+    aria-labelledby="aba-saude"
+    tabindex="0"
+    hidden
+>
+    {% include "_animal_saude.html" %}
+</section>
 
         <section
             id="painel-medicacoes"

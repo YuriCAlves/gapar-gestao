@@ -627,3 +627,67 @@ p {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
+
+.saude-editor {
+    margin: 20px 0;
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    background-color: var(--superficie);
+}
+
+.saude-editor summary {
+    min-height: 48px;
+    padding: 14px 16px;
+    color: var(--verde-escuro);
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.saude-editor[open] summary {
+    border-bottom: 1px solid var(--borda);
+}
+
+.saude-form {
+    padding: 16px;
+}
+
+.saude-form .form-acoes {
+    margin-top: 20px;
+}
+
+.saude-registros {
+    display: grid;
+    gap: 16px;
+}
+
+.saude-registro {
+    min-width: 0;
+    padding: 20px;
+    border: 1px solid var(--borda);
+    border-left: 4px solid var(--verde);
+    border-radius: 8px;
+    background-color: var(--superficie);
+}
+
+.saude-registro h4 {
+    margin: 0 0 16px;
+    font-size: 18px;
+    overflow-wrap: anywhere;
+}
+
+.saude-detalhes {
+    display: grid;
+    gap: 12px;
+    margin: 0;
+}
+
+.saude-detalhes dt {
+    font-weight: bold;
+}
+
+.saude-detalhes dd {
+    margin: 4px 0 0;
+    color: var(--texto-secundario);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
