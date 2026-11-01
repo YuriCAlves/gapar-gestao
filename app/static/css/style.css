@@ -691,3 +691,32 @@ p {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
+
+.medicacao-doses {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.medicacao-doses .botao {
+    width: 100%;
+}
+
+.saude-registro h5 {
+    margin: 20px 0 8px;
+    font-size: 16px;
+}
+
+.medicacao-doses .botao:disabled {
+    border-color: #6b7280;
+    color: #374151;
+    background-color: #e5e7eb;
+    cursor: default;
+}
+
+@media (min-width: 600px) {
+    .medicacao-doses .botao {
+        width: auto;
+    }
+}
