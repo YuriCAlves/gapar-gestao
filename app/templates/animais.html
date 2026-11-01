@@ -14,6 +14,60 @@
     <main>
         <h1>Animais acolhidos</h1>
         <p>Acompanhe os animais e seus cuidados.</p>
+    <form class="busca" role="search">
+    <label for="busca-nome">Buscar animal pelo nome</label>
+
+    <div class="busca__campos">
+        <input
+            type="search"
+            id="busca-nome"
+            name="q"
+            placeholder="Digite o nome do animal"
+        >
+        <button type="submit">Buscar</button>
+    </div>
+</form>
+<section class="animais" aria-labelledby="titulo-listagem">
+    <h2 id="titulo-listagem">Lista de animais</h2>
+    <p>Dados de exemplo para desenvolvimento da interface.</p>
+
+    <div class="animais__lista">
+        <article class="animal-card">
+            <div class="animal-card__foto">
+                Sem foto
+            </div>
+
+            <div class="animal-card__conteudo">
+                <h3>Rex</h3>
+                <p class="animal-card__status">Em acolhimento</p>
+                <p>Macho · Porte médio</p>
+            </div>
+        </article>
+         <article class="animal-card">
+            <div class="animal-card__foto">
+                Sem foto
+            </div>
+
+            <div class="animal-card__conteudo">
+                <h3>Luna</h3>
+                <p class="animal-card__status">Em tratamento</p>
+                <p>Fêmea · Porte pequeno</p>
+            </div>
+        </article>
+         <article class="animal-card">
+            <div class="animal-card__foto">
+                Sem foto
+            </div>
+
+            <div class="animal-card__conteudo">
+                <h3>Thor</h3>
+                <p class="animal-card__status">Disponível para adoção</p>
+                <p>Macho · Porte grande</p>
+            </div>
+        </article>
+    </div>
+</section>
     </main>
+    <script src="{{ url_for('static', filename='js/animais.js') }}"></script>
 </body>
 </html>
