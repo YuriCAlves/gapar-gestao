@@ -1,5 +1,5 @@
 from datetime import date
-from flask import jsonify, render_template
+from flask import jsonify, render_template, abort
 from flask_login import login_required
 from . import core_bp
 
@@ -45,3 +45,43 @@ def pagina_animais():
 @core_bp.route("/animais/novo", methods=["GET"])
 def novo_animal():
     return render_template("animal_formulario.html")
+
+
+@core_bp.route("/animais/<int:animal_id>", methods=["GET"])
+def ficha_animal(animal_id):
+    animais_exemplo = {
+        1: {
+            "id": 1,
+            "nome": "Rex",
+            "sexo": "Macho",
+            "porte": "Médio",
+            "status_operacional": "em acolhimento",
+            "is_castrado": True,
+            "is_idoso": False,
+        },
+        2: {
+            "id": 2,
+            "nome": "Luna",
+            "sexo": "Fêmea",
+            "porte": "Pequeno",
+            "status_operacional": "em tratamento",
+            "is_castrado": False,
+            "is_idoso": True,
+        },
+        3: {
+            "id": 3,
+            "nome": "Thor",
+            "sexo": "Macho",
+            "porte": "Grande",
+            "status_operacional": "disponível",
+            "is_castrado": True,
+            "is_idoso": True,
+        },
+    }
+
+    animal = animais_exemplo.get(animal_id)
+
+    if animal is None:
+        abort(404)
+
+    return render_template("animal_ficha.html", animal=animal)
