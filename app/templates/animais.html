@@ -26,11 +26,26 @@
         >
         <button type="submit">Buscar</button>
     </div>
+    <div class="filtro">
+    <label for="filtro-status">Situação do animal</label>
+
+    <select id="filtro-status" name="status">
+        <option value="">Todas as situações</option>
+        <option value="em acolhimento">Em acolhimento</option>
+        <option value="em tratamento">Em tratamento</option>
+        <option value="disponível para adoção">
+            Disponível para adoção
+        </option>
+        <option value="lar temporário">Lar temporário</option>
+        <option value="adotado">Adotado</option>
+        <option value="óbito">Óbito</option>
+    </select>
+</div>
 </form>
 <section class="animais" aria-labelledby="titulo-listagem">
     <h2 id="titulo-listagem">Lista de animais</h2>
     <p>Dados de exemplo para desenvolvimento da interface.</p>
-
+<p id="mensagem-busca" role="status" aria-live="polite"></p>
     <div class="animais__lista">
         <article class="animal-card">
             <div class="animal-card__foto">
