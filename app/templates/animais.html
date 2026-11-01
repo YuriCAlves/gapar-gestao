@@ -3,86 +3,225 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Animais | GAPAR Gestão</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+
+    <script
+        src="{{ url_for('static', filename='js/animais.js') }}"
+        defer
+    ></script>
 </head>
+
 <body>
-    <header>
-        <p>GAPAR Gestão</p>
+    <a class="pular-conteudo" href="#conteudo">
+        Pular para o conteúdo
+    </a>
+
+    <header class="cabecalho">
+        <div class="cabecalho__conteudo">
+            <p class="marca">GAPAR Gestão</p>
+            <span>Cuidado e proteção animal</span>
+        </div>
     </header>
 
-    <main>
+    <main id="conteudo">
         <h1>Animais acolhidos</h1>
-        <p>Acompanhe os animais e seus cuidados.</p>
-    <form class="busca" role="search">
-    <label for="busca-nome">Buscar animal pelo nome</label>
+        <p class="descricao">Acompanhe os animais e seus cuidados.</p>
 
-    <div class="busca__campos">
-        <input
-            type="search"
-            id="busca-nome"
-            name="q"
-            placeholder="Digite o nome do animal"
-        >
-        <button type="submit">Buscar</button>
-    </div>
-    <div class="filtro">
-    <label for="filtro-status">Situação do animal</label>
+        <p class="aviso-demo">
+            Demonstração: os animais abaixo são exemplos fictícios.
+        </p>
 
-    <select id="filtro-status" name="status">
-        <option value="">Todas as situações</option>
-        <option value="em acolhimento">Em acolhimento</option>
-        <option value="em tratamento">Em tratamento</option>
-        <option value="disponível para adoção">
-            Disponível para adoção
-        </option>
-        <option value="lar temporário">Lar temporário</option>
-        <option value="adotado">Adotado</option>
-        <option value="óbito">Óbito</option>
-    </select>
-</div>
-</form>
-<section class="animais" aria-labelledby="titulo-listagem">
-    <h2 id="titulo-listagem">Lista de animais</h2>
-    <p>Dados de exemplo para desenvolvimento da interface.</p>
-<p id="mensagem-busca" role="status" aria-live="polite"></p>
-    <div class="animais__lista">
-        <article class="animal-card">
-            <div class="animal-card__foto">
-                Sem foto
+        <form class="busca" role="search" aria-label="Buscar e filtrar animais">
+            <div class="campo">
+                <label for="busca-nome">Buscar animal pelo nome</label>
+
+                <div class="busca__campos">
+                    <input
+                        type="search"
+                        id="busca-nome"
+                        name="q"
+                        placeholder="Digite o nome do animal"
+                    >
+
+                    <button class="botao botao--principal" type="submit">
+                        Buscar
+                    </button>
+                </div>
             </div>
 
-            <div class="animal-card__conteudo">
-                <h3>Rex</h3>
-                <p class="animal-card__status">Em acolhimento</p>
-                <p>Macho · Porte médio</p>
-            </div>
-        </article>
-         <article class="animal-card">
-            <div class="animal-card__foto">
-                Sem foto
+            <div class="filtros">
+                <div class="campo">
+                    <label for="filtro-status">Situação</label>
+
+                    <select id="filtro-status" name="status">
+                        <option value="">Todas as situações</option>
+                        <option value="acolhimento">Em acolhimento</option>
+                        <option value="tratamento">Em tratamento</option>
+                        <option value="disponivel">Disponível para adoção</option>
+                        <option value="lar-temporario">Lar temporário</option>
+                        <option value="adotado">Adotado</option>
+                        <option value="obito">Óbito</option>
+                    </select>
+                </div>
+
+                <div class="campo">
+                    <label for="filtro-porte">Porte</label>
+
+                    <select id="filtro-porte" name="porte">
+                        <option value="">Todos os portes</option>
+                        <option value="pequeno">Pequeno</option>
+                        <option value="medio">Médio</option>
+                        <option value="grande">Grande</option>
+                    </select>
+                </div>
+
+                <div class="campo">
+                    <label for="filtro-sexo">Sexo</label>
+
+                    <select id="filtro-sexo" name="sexo">
+                        <option value="">Todos</option>
+                        <option value="macho">Macho</option>
+                        <option value="femea">Fêmea</option>
+                    </select>
+                </div>
             </div>
 
-            <div class="animal-card__conteudo">
-                <h3>Luna</h3>
-                <p class="animal-card__status">Em tratamento</p>
-                <p>Fêmea · Porte pequeno</p>
-            </div>
-        </article>
-         <article class="animal-card">
-            <div class="animal-card__foto">
-                Sem foto
+            <fieldset class="caracteristicas">
+                <legend>Características</legend>
+
+                <div class="caracteristicas__opcoes">
+                    <label class="opcao" for="filtro-castrado">
+                        <input
+                            type="checkbox"
+                            id="filtro-castrado"
+                            name="castrado"
+                        >
+                        Somente castrados
+                    </label>
+
+                    <label class="opcao" for="filtro-idoso">
+                        <input
+                            type="checkbox"
+                            id="filtro-idoso"
+                            name="idoso"
+                        >
+                        Somente idosos
+                    </label>
+                </div>
+            </fieldset>
+
+            <button class="botao botao--secundario" type="reset">
+                Limpar filtros
+            </button>
+        </form>
+
+        <section class="animais" aria-labelledby="titulo-listagem">
+            <h2 id="titulo-listagem">Lista de animais</h2>
+
+            <p id="mensagem-busca" role="status" aria-live="polite"></p>
+
+            <noscript>
+                <p>Ative o JavaScript no navegador para utilizar os filtros.</p>
+            </noscript>
+
+            <div class="animais__lista">
+                <article
+                    class="animal-card"
+                    data-status="acolhimento"
+                    data-porte="medio"
+                    data-sexo="macho"
+                    data-castrado="true"
+                    data-idoso="false"
+                >
+                    <div class="animal-card__foto">
+                        Foto não cadastrada
+                    </div>
+
+                    <div class="animal-card__conteudo">
+                        <h3>Rex</h3>
+
+                        <p class="animal-card__status status--acolhimento">
+                            Em acolhimento
+                        </p>
+
+                        <p>Macho · Porte médio</p>
+
+                        <ul class="animal-card__marcadores" aria-label="Características">
+                            <li>Castrado</li>
+                        </ul>
+                    </div>
+                </article>
+
+                <article
+                    class="animal-card"
+                    data-status="tratamento"
+                    data-porte="pequeno"
+                    data-sexo="femea"
+                    data-castrado="false"
+                    data-idoso="true"
+                >
+                    <div class="animal-card__foto">
+                        Foto não cadastrada
+                    </div>
+
+                    <div class="animal-card__conteudo">
+                        <h3>Luna</h3>
+
+                        <p class="animal-card__status status--tratamento">
+                            Em tratamento
+                        </p>
+
+                        <p>Fêmea · Porte pequeno</p>
+
+                        <ul class="animal-card__marcadores" aria-label="Características">
+                            <li>Idosa</li>
+                        </ul>
+                    </div>
+                </article>
+
+                <article
+                    class="animal-card"
+                    data-status="disponivel"
+                    data-porte="grande"
+                    data-sexo="macho"
+                    data-castrado="true"
+                    data-idoso="true"
+                >
+                    <div class="animal-card__foto">
+                        Foto não cadastrada
+                    </div>
+
+                    <div class="animal-card__conteudo">
+                        <h3>Thor</h3>
+
+                        <p class="animal-card__status status--disponivel">
+                            Disponível para adoção
+                        </p>
+
+                        <p>Macho · Porte grande</p>
+
+                        <ul class="animal-card__marcadores" aria-label="Características">
+                            <li>Castrado</li>
+                            <li>Idoso</li>
+                        </ul>
+                    </div>
+                </article>
             </div>
 
-            <div class="animal-card__conteudo">
-                <h3>Thor</h3>
-                <p class="animal-card__status">Disponível para adoção</p>
-                <p>Macho · Porte grande</p>
+            <div id="estado-vazio" class="estado-vazio" hidden>
+                <h3>Tente ajustar a busca</h3>
+                <p>
+                    Confira o nome, escolha outra situação ou use
+                    “Limpar filtros” para visualizar todos os animais.
+                </p>
             </div>
-        </article>
-    </div>
-</section>
+        </section>
     </main>
-    <script src="{{ url_for('static', filename='js/animais.js') }}"></script>
 </body>
 </html>
