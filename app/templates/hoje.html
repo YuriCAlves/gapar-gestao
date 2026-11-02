@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Hoje | GAPAR Gestão</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+
+    <script
+        src="{{ url_for('static', filename='js/hoje.js') }}"
+        defer
+    ></script>
+</head>
+
+<body>
+    <a class="pular-conteudo" href="#conteudo">
+        Pular para o conteúdo
+    </a>
+
+    <header class="cabecalho">
+        <div class="cabecalho__conteudo">
+            <p class="marca">GAPAR Gestão</p>
+
+            <nav class="menu-principal" aria-label="Menu principal">
+                <a href="{{ url_for('core.pagina_hoje') }}" aria-current="page">
+                    Hoje
+                </a>
+                <a href="{{ url_for('core.pagina_animais') }}">
+                    Animais
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <main id="conteudo">
+        <h1>Hoje</h1>
+        <p class="descricao">Organize os cuidados previstos para o dia.</p>
+        <p id="data-hoje" class="hoje-data"></p>
+
+        <p class="aviso-demo">
+            Demonstração com tarefas fictícias para hoje.
+            Os registros feitos nas fichas ainda não aparecem aqui.
+            Atualizar esta página reinicia os exemplos.
+        </p>
+
+        <section class="hoje-resumo" aria-label="Resumo do dia">
+            <div class="hoje-indicador">
+                <span>Medicações pendentes</span>
+                <strong id="total-medicacoes">0</strong>
+            </div>
+
+            <div class="hoje-indicador">
+                <span>Vacinas previstas</span>
+                <strong id="total-vacinas">0</strong>
+            </div>
+
+            <div class="hoje-indicador">
+                <span>Doses registradas</span>
+                <strong id="total-aplicadas">0</strong>
+            </div>
+        </section>
+
+        <section class="busca" aria-labelledby="titulo-filtros">
+            <h2 id="titulo-filtros">Filtrar tarefas</h2>
+
+            <div class="filtros">
+                <div class="campo">
+                    <label for="hoje-tipo">Tipo de cuidado</label>
+                    <select id="hoje-tipo">
+                        <option value="">Todos</option>
+                        <option value="medicacao">Medicações</option>
+                        <option value="vacina">Vacinas</option>
+                    </select>
+                </div>
+
+                <div class="campo">
+                    <label for="hoje-situacao">Situação</label>
+                    <select id="hoje-situacao">
+                        <option value="">Todas</option>
+                        <option value="pendente">Pendentes</option>
+                        <option value="concluida">Concluídas</option>
+                    </select>
+                </div>
+            </div>
+
+            <button
+                id="hoje-limpar"
+                class="botao botao--secundario hoje-limpar"
+                type="button"
+            >
+                Limpar filtros
+            </button>
+        </section>
+
+        <section class="animais" aria-labelledby="titulo-tarefas">
+            <h2 id="titulo-tarefas">Cuidados do dia</h2>
+
+            <p id="hoje-resultados" role="status"></p>
+            <p id="hoje-mensagem" class="form-mensagem" role="status"></p>
+
+            <div id="hoje-lista" class="hoje-lista"></div>
+
+            <div id="hoje-vazio" class="estado-vazio" hidden>
+                <h3>Nenhuma tarefa para esses filtros</h3>
+                <p>Escolha outra situação ou limpe os filtros.</p>
+            </div>
+
+            <noscript>
+                <p>Ative o JavaScript para visualizar a demonstração.</p>
+            </noscript>
+        </section>
+    </main>
+</body>
+</html>

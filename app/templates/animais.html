@@ -25,7 +25,14 @@
     <header class="cabecalho">
         <div class="cabecalho__conteudo">
             <p class="marca">GAPAR Gestão</p>
-            <span>Cuidado e proteção animal</span>
+           <nav class="menu-principal" aria-label="Menu principal">
+    <a href="{{ url_for('core.pagina_hoje') }}">
+        Hoje
+    </a>
+    <a href="{{ url_for('core.pagina_animais') }}" aria-current="page">
+        Animais
+    </a>
+</nav>
         </div>
     </header>
 

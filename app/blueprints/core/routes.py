@@ -85,3 +85,7 @@ def ficha_animal(animal_id):
         abort(404)
 
     return render_template("animal_ficha.html", animal=animal)
+
+@core_bp.route("/hoje", methods=["GET"])
+def pagina_hoje():
+    return render_template("hoje.html")
