@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Entrar | GAPAR Gestão</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+
+    <script
+        src="{{ url_for('static', filename='js/login.js') }}"
+        defer
+    ></script>
+</head>
+
+<body>
+    <header class="cabecalho">
+        <div class="cabecalho__conteudo">
+            <p class="marca">GAPAR Gestão</p>
+            <span>Cuidado e proteção animal</span>
+        </div>
+    </header>
+
+    <main class="login-container">
+        <section class="login-card" aria-labelledby="titulo-login">
+            <h1 id="titulo-login">Acessar o sistema</h1>
+
+            <p class="descricao">
+                O acesso é destinado às pessoas autorizadas pela GAPAR.
+                Utilize sua conta Google.
+            </p>
+
+            <p
+                id="login-status"
+                class="informacao login-status"
+                role="status"
+                aria-live="polite"
+            >
+                Consultando sessão…
+            </p>
+
+            <div id="login-sem-sessao" hidden>
+                <button
+                    class="botao botao--principal login-botao"
+                    type="button"
+                    aria-describedby="login-integracao"
+                    disabled
+                >
+                    Entrar com Google
+                </button>
+
+                <p id="login-integracao" class="ajuda">
+                    A integração com o Google ainda está em desenvolvimento.
+                    A entrada ficará disponível após a configuração do back-end.
+                </p>
+
+                <p class="login-orientacao">
+                    Quando o login estiver disponível, seu e-mail precisará
+                    estar na lista de pessoas autorizadas. Para solicitar
+                    acesso, procure a responsável pela ONG.
+                </p>
+            </div>
+
+            <div id="login-com-sessao" hidden>
+                <dl class="saude-detalhes">
+                    <div>
+                        <dt>Conta</dt>
+                        <dd id="login-email"></dd>
+                    </div>
+
+                    <div>
+                        <dt>Perfil</dt>
+                        <dd id="login-perfil"></dd>
+                    </div>
+                </dl>
+
+                <a
+                    class="botao botao--principal login-continuar"
+                    href="{{ url_for('core.pagina_hoje') }}"
+                >
+                    Continuar para Hoje
+                </a>
+            </div>
+
+            <button
+                id="login-tentar"
+                class="botao botao--secundario login-tentar"
+                type="button"
+                hidden
+            >
+                Tentar novamente
+            </button>
+
+            <noscript>
+                <p>Ative o JavaScript para consultar sua sessão.</p>
+            </noscript>
+        </section>
+    </main>
+</body>
+</html>

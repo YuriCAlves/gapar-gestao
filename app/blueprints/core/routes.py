@@ -89,3 +89,7 @@ def ficha_animal(animal_id):
 @core_bp.route("/hoje", methods=["GET"])
 def pagina_hoje():
     return render_template("hoje.html")
+
+@core_bp.route("/entrar", methods=["GET"])
+def pagina_login():
+    return render_template("login.html")
