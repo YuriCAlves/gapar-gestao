@@ -50,14 +50,15 @@
             ← Voltar para animais
         </a>
 
-        <p class="aviso-demo">
-            Demonstração: esta ficha utiliza dados fictícios.
-            Nenhuma alteração é salva no banco.
-        </p>
+        
 
         <section class="ficha-resumo" aria-labelledby="nome-animal">
             <div class="ficha-resumo__foto">
-                Foto não cadastrada
+                {% if animal.foto_url %}
+                    <img src="{{ animal.foto_url }}" alt="Foto de {{ animal.nome }}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;">
+                {% else %}
+                    Foto não cadastrada
+                {% endif %}
             </div>
 
             <div>
@@ -167,22 +168,22 @@
 
                 <div>
                     <dt>Idade estimada</dt>
-                    <dd>Não informada</dd>
+                    <dd>{{ animal.idade_estimada or "Não informada" }}</dd>
                 </div>
 
                 <div>
                     <dt>Raça</dt>
-                    <dd>Não informada</dd>
+                    <dd>{{ animal.raca or "Sem Raça Definida (SRD)" }}</dd>
                 </div>
 
                 <div>
                     <dt>Pelagem</dt>
-                    <dd>Não informada</dd>
+                    <dd>{{ animal.pelagem or "Não informada" }}</dd>
                 </div>
 
                 <div>
                     <dt>Peso aproximado</dt>
-                    <dd>Não informado</dd>
+                    <dd>{{ animal.peso_kg ~ " kg" if animal.peso_kg else "Não informado" }}</dd>
                 </div>
 
                 <div>
@@ -197,22 +198,22 @@
 
                 <div>
                     <dt>Data de entrada</dt>
-                    <dd>Não informada</dd>
+                    <dd>{{ animal.data_entrada or "Não informada" }}</dd>
                 </div>
 
                 <div>
                     <dt>Local do resgate</dt>
-                    <dd>Não informado</dd>
+                    <dd>{{ animal.local_resgate or "Não informado" }}</dd>
                 </div>
 
                 <div>
                     <dt>Motivo do resgate</dt>
-                    <dd>Não informado</dd>
+                    <dd>{{ animal.motivo_resgate or "Não informado" }}</dd>
                 </div>
 
                 <div>
                     <dt>Cuidados especiais</dt>
-                    <dd>Não informados</dd>
+                    <dd>{{ animal.cuidados_especiais or "Não informados" }}</dd>
                 </div>
             </dl>
         </section>

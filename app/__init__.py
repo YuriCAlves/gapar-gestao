@@ -91,7 +91,8 @@ def create_app(config_name=None):
             "mensagem": "Ocorreu um erro inesperado no processamento."
         }), 500
 
-    from .commands import create_admin
+    from .commands import create_admin, seed_data
     app.cli.add_command(create_admin)
+    app.cli.add_command(seed_data)
 
     return app

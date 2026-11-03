@@ -235,3 +235,24 @@ def logout():
     )
 
     return jsonify({"sucesso": True, "mensagem": "Sessão finalizada com sucesso."}), 200
+
+
+@auth_bp.route("/dev-login", methods=["POST"])
+def dev_login():
+    """Autenticação de desenvolvimento para testes locais com a Whitelist (RN12)."""
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    email = data.get("email", "").strip().lower()
+
+    if not email:
+        admin_user = User.query.filter_by(role="Administradora", is_active=True).first()
+        if not admin_user:
+            admin_user = User.query.filter_by(is_active=True).first()
+        if admin_user:
+            email = admin_user.email
+        else:
+            return jsonify({
+                "erro": "Nenhum usuário ativo na Whitelist.",
+                "mensagem": "Cadastre uma usuária na Whitelist ou utilize o comando 'flask seed'."
+            }), 400
+
+    return _process_user_login(email, name=None, google_id="dev-google-id")

@@ -15,7 +15,7 @@ const tiposPermitidos = [
     "image/webp"
 ];
 
-const tamanhoMaximo = 5 * 1024 * 1024;
+const tamanhoMaximo = 10 * 1024 * 1024;
 let urlFoto = null;
 
 function liberarPrevia() {
@@ -46,9 +46,11 @@ function validarTexto(campo) {
 }
 
 [campoNome, campoRaca].forEach(function (campo) {
-    campo.addEventListener("input", function () {
-        validarTexto(campo);
-    });
+    if (campo) {
+        campo.addEventListener("input", function () {
+            validarTexto(campo);
+        });
+    }
 });
 
 campoFoto.addEventListener("change", function () {
@@ -71,7 +73,7 @@ campoFoto.addEventListener("change", function () {
     }
 
     if (arquivo.size > tamanhoMaximo) {
-        const mensagem = "A imagem deve ter no máximo 5 MB.";
+        const mensagem = "A imagem deve ter no máximo 10 MB.";
         campoFoto.setCustomValidity(mensagem);
         fotoMensagem.textContent = mensagem;
         campoFoto.reportValidity();
@@ -86,9 +88,7 @@ campoFoto.addEventListener("change", function () {
     };
 
     imagemPrevia.onerror = function () {
-        const mensagem =
-            "Não foi possível abrir essa imagem. Selecione outra.";
-
+        const mensagem = "Não foi possível abrir essa imagem. Selecione outra.";
         liberarPrevia();
         campoFoto.setCustomValidity(mensagem);
         fotoMensagem.textContent = mensagem;
@@ -105,57 +105,62 @@ removerFoto.addEventListener("click", function () {
 });
 
 formulario.addEventListener("input", function () {
-    // Uma alteração invalida a mensagem da validação anterior.
     formMensagem.textContent = "";
 });
 
-formulario.addEventListener("submit", function (evento) {
+formulario.addEventListener("submit", async function (evento) {
     evento.preventDefault();
 
     validarTexto(campoNome);
-    validarTexto(campoRaca);
+    if (campoRaca && campoRaca.value.trim()) {
+        validarTexto(campoRaca);
+    }
 
     if (!formulario.reportValidity()) {
         return;
     }
 
-    const dadosFormulario = new FormData(formulario);
-    const peso = dadosFormulario.get("peso_kg");
+    const botaoSubmit = formulario.querySelector("button[type='submit']");
+    if (botaoSubmit) {
+        botaoSubmit.disabled = true;
+    }
 
-    // Objeto preparado com os nomes definidos no modelo Animal.
-    // Não há envio para a API nesta etapa.
-    const dadosAnimal = {
-        nome: dadosFormulario.get("nome").trim(),
-        idade_estimada:
-            dadosFormulario.get("idade_estimada").trim() || null,
-        sexo: dadosFormulario.get("sexo"),
-        raca: dadosFormulario.get("raca").trim(),
-        porte: dadosFormulario.get("porte"),
-        pelagem: dadosFormulario.get("pelagem").trim() || null,
-        peso_kg: peso === "" ? null : Number(peso),
-        local_resgate:
-            dadosFormulario.get("local_resgate").trim() || null,
-        motivo_resgate:
-            dadosFormulario.get("motivo_resgate").trim() || null,
-        is_castrado: dadosFormulario.has("is_castrado"),
-        is_idoso: dadosFormulario.has("is_idoso"),
-        cuidados_especiais:
-            dadosFormulario.get("cuidados_especiais").trim() || null
-    };
+    formMensagem.className = "form-mensagem";
+    formMensagem.textContent = "Salvando cadastro e comprimindo foto no servidor...";
 
-    formMensagem.textContent =
-        `Os dados de ${dadosAnimal.nome} passaram pela validação. ` +
-        "Este é um teste: nenhum cadastro ou foto foi salvo.";
+    try {
+        const dadosFormulario = new FormData(formulario);
+        const resposta = await fetch("/api/animais", {
+            method: "POST",
+            body: dadosFormulario
+        });
 
-    formMensagem.scrollIntoView({
-        block: "nearest"
-    });
+        const resultado = await resposta.json();
+
+        if (resposta.ok && resultado.sucesso) {
+            formMensagem.className = "form-mensagem form-mensagem--sucesso";
+            formMensagem.textContent = `Animal ${resultado.animal.nome} cadastrado com sucesso! Redirecionando para a ficha...`;
+            setTimeout(function () {
+                window.location.href = `/animais/${resultado.animal.id}`;
+            }, 1000);
+        } else {
+            formMensagem.className = "form-mensagem form-mensagem--erro";
+            formMensagem.textContent = resultado.mensagem || resultado.erro || "Ocorreu um erro ao cadastrar o animal.";
+            if (botaoSubmit) botaoSubmit.disabled = false;
+        }
+    } catch (erro) {
+        formMensagem.className = "form-mensagem form-mensagem--erro";
+        formMensagem.textContent = "Erro na comunicação com o servidor. Tente novamente.";
+        if (botaoSubmit) botaoSubmit.disabled = false;
+    }
+
+    formMensagem.scrollIntoView({ block: "nearest" });
 });
 
 formulario.addEventListener("reset", function () {
     limparFoto();
     campoNome.setCustomValidity("");
-    campoRaca.setCustomValidity("");
+    if (campoRaca) campoRaca.setCustomValidity("");
     formMensagem.textContent = "";
 
     setTimeout(function () {

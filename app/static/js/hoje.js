@@ -7,275 +7,214 @@
     const mensagem = document.querySelector("#hoje-mensagem");
     const vazio = document.querySelector("#hoje-vazio");
 
-    function dataLocal() {
-        const agora = new Date();
-        const ano = agora.getFullYear();
-        const mes = String(agora.getMonth() + 1).padStart(2, "0");
-        const dia = String(agora.getDate()).padStart(2, "0");
-
-        return `${ano}-${mes}-${dia}`;
-    }
-
-    const dataReferencia = dataLocal();
+    let tarefas = [];
 
     document.querySelector("#data-hoje").textContent =
         new Intl.DateTimeFormat("pt-BR", {
             dateStyle: "full"
         }).format(new Date());
 
-    // Exemplos independentes dos registros das fichas.
-    const tarefas = [
-        {
-            id: 1,
-            animal: "Rex",
-            animalId: 1,
-            tipo: "medicacao",
-            nome: "Medicamento de exemplo A",
-            dosagem: "Dosagem fictícia",
-            horario: "08:00",
-            concluida: false
-        },
-        {
-            id: 2,
-            animal: "Luna",
-            animalId: 2,
-            tipo: "medicacao",
-            nome: "Medicamento de exemplo B",
-            dosagem: "Dosagem fictícia",
-            horario: "14:00",
-            concluida: false
-        },
-        {
-            id: 3,
-            animal: "Rex",
-            animalId: 1,
-            tipo: "medicacao",
-            nome: "Medicamento de exemplo A",
-            dosagem: "Dosagem fictícia",
-            horario: "20:00",
-            concluida: false
-        },
-        {
-            id: 4,
-            animal: "Luna",
-            animalId: 2,
-            tipo: "vacina",
-            nome: "Vacina de exemplo",
-            horario: null,
-            concluida: false
-        }
-    ];
-
     function criarTexto(tag, texto, classe) {
         const elemento = document.createElement(tag);
         elemento.textContent = texto;
-
-        if (classe) {
-            elemento.className = classe;
-        }
-
+        if (classe) elemento.className = classe;
         return elemento;
     }
 
-    function registrarAplicacao(tarefa) {
+    async function carregarPainelHoje() {
+        try {
+            const resp = await fetch("/api/hoje");
+            if (!resp.ok) return;
+
+            const dados = await resp.json();
+            tarefas = [];
+
+            // Adiciona medicações
+            (dados.medicacoes_hoje || []).forEach(function (m, idx) {
+                tarefas.push({
+                    id: `med-${m.prescricao_id}-${m.horario_previsto}`,
+                    prescricao_id: m.prescricao_id,
+                    animal: m.animal_nome,
+                    animalId: m.animal_id,
+                    tipo: "medicacao",
+                    nome: `${m.medicamento} (${m.dosagem})`,
+                    baia: m.localizacao_baia,
+                    horario: m.horario_previsto,
+                    concluida: m.aplicado,
+                    horario_aplicado: m.horario_aplicado
+                });
+            });
+
+            // Adiciona vacinas
+            (dados.vacinas_hoje || []).forEach(function (v, idx) {
+                tarefas.push({
+                    id: `vac-${v.vacina_id}`,
+                    vacina_id: v.vacina_id,
+                    animal: v.animal_nome,
+                    animalId: v.animal_id,
+                    tipo: "vacina",
+                    nome: `Vacina: ${v.nome_vacina}`,
+                    baia: v.localizacao_baia,
+                    horario: "Dia de hoje",
+                    concluida: false
+                });
+            });
+
+            atualizarLista();
+        } catch (e) {
+            console.error("Erro ao carregar tarefas do dia:", e);
+        }
+    }
+
+    async function registrarAplicacao(tarefa, botao) {
         if (tarefa.concluida || tarefa.tipo !== "medicacao") {
             return;
         }
 
-        if (dataLocal() !== dataReferencia) {
-            mensagem.textContent =
-                "O dia mudou. Atualize a página para carregar os exemplos de hoje.";
-            return;
-        }
-
         const confirmou = window.confirm(
-            `Confirma que a dose de ${tarefa.animal}, ` +
-            `prevista para ${tarefa.horario}, já foi aplicada?\n\n` +
-            "Esta ação é apenas uma demonstração."
+            `Confirma que a dose de ${tarefa.animal} (${tarefa.nome}), ` +
+            `prevista para as ${tarefa.horario}, foi administrada?`
         );
 
         if (!confirmou) {
             return;
         }
 
-        if (dataLocal() !== dataReferencia) {
-            mensagem.textContent =
-                "O dia mudou durante a confirmação. Atualize a página.";
-            return;
+        if (botao) {
+            botao.disabled = true;
+            botao.textContent = "Gravando...";
         }
 
-        tarefa.concluida = true;
-        tarefa.horarioRegistrado = new Intl.DateTimeFormat("pt-BR", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false
-        }).format(new Date());
+        try {
+            const resp = await fetch(`/api/saude/medicacao/baixa/${tarefa.prescricao_id}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ horario_previsto: tarefa.horario })
+            });
 
-        renderizar();
+            const resultado = await resp.json();
 
-        mensagem.textContent =
-            `Aplicação de ${tarefa.animal} registrada na demonstração. ` +
-            "Nenhum dado foi salvo no banco.";
+            if (resp.ok && resultado.sucesso) {
+                tarefa.concluida = true;
+                mensagem.className = "form-mensagem form-mensagem--sucesso";
+                mensagem.textContent = `Dose das ${tarefa.horario} aplicada com sucesso para ${tarefa.animal}!`;
+                atualizarLista();
+            } else {
+                if (botao) {
+                    botao.disabled = false;
+                    botao.textContent = "Dar baixa";
+                }
+                mensagem.className = "form-mensagem form-mensagem--erro";
+                mensagem.textContent = resultado.mensagem || "Não foi possível registrar a baixa.";
+            }
+        } catch (e) {
+            if (botao) {
+                botao.disabled = false;
+                botao.textContent = "Dar baixa";
+            }
+            mensagem.className = "form-mensagem form-mensagem--erro";
+            mensagem.textContent = "Erro na comunicação com o servidor.";
+        }
+    }
 
-        // O botão anterior foi recriado ou removido pelo filtro.
-        const linkFicha = document.querySelector(
-            `[data-tarefa-id="${tarefa.id}"] .hoje-link-ficha`
-        );
+    function criarCard(tarefa) {
+        const item = document.createElement("li");
+        item.className = "hoje-card";
 
-        if (linkFicha) {
-            linkFicha.focus();
+        const tipoTexto = tarefa.tipo === "medicacao" ? "Medicação" : "Vacina";
+        item.append(criarTexto("span", tipoTexto, "hoje-card__tipo"));
+
+        const cabecalho = document.createElement("div");
+        cabecalho.className = "hoje-card__cabecalho";
+
+        const link = document.createElement("a");
+        link.href = `/animais/${tarefa.animalId}`;
+        link.textContent = tarefa.animal;
+        cabecalho.append(link);
+
+        if (tarefa.baia) {
+            cabecalho.append(criarTexto("span", ` · ${tarefa.baia}`));
+        }
+
+        cabecalho.append(criarTexto("span", ` — ${tarefa.nome}`));
+        item.append(cabecalho);
+
+        if (tarefa.horario) {
+            item.append(criarTexto("p", `Horário: ${tarefa.horario}`, "hoje-card__horario"));
+        }
+
+        const rodape = document.createElement("div");
+        rodape.className = "hoje-card__rodape";
+
+        if (tarefa.concluida) {
+            const statusConcluido = criarTexto("span", "✓ Dose administrada hoje", "hoje-card__concluida");
+            statusConcluido.style.color = "var(--cor-sucesso, #155724)";
+            statusConcluido.style.fontWeight = "bold";
+            rodape.append(statusConcluido);
+        } else if (tarefa.tipo === "medicacao") {
+            const botao = document.createElement("button");
+            botao.type = "button";
+            botao.className = "botao botao--principal";
+            botao.textContent = "Dar baixa na dose";
+            botao.addEventListener("click", function () {
+                registrarAplicacao(tarefa, botao);
+            });
+            rodape.append(botao);
         } else {
-            situacao.focus();
+            const linkVacina = document.createElement("a");
+            linkVacina.href = `/animais/${tarefa.animalId}`;
+            linkVacina.className = "botao botao--secundario";
+            linkVacina.textContent = "Ver cartão de vacinas";
+            rodape.append(linkVacina);
         }
+
+        item.append(rodape);
+        return item;
     }
 
-    function atualizarContadores() {
-        document.querySelector("#total-medicacoes").textContent =
-            tarefas.filter(function (tarefa) {
-                return tarefa.tipo === "medicacao" && !tarefa.concluida;
-            }).length;
+    function filtrarTarefas() {
+        return tarefas.filter(function (tarefa) {
+            const filtroTipo = tipo.value;
+            const filtroSituacao = situacao.value;
 
-        document.querySelector("#total-vacinas").textContent =
-            tarefas.filter(function (tarefa) {
-                return tarefa.tipo === "vacina" && !tarefa.concluida;
-            }).length;
-
-        document.querySelector("#total-aplicadas").textContent =
-            tarefas.filter(function (tarefa) {
-                return tarefa.tipo === "medicacao" && tarefa.concluida;
-            }).length;
-    }
-
-    function renderizar() {
-        lista.replaceChildren();
-        atualizarContadores();
-
-        const filtradas = tarefas.filter(function (tarefa) {
-            const correspondeTipo =
-                tipo.value === "" || tarefa.tipo === tipo.value;
-
+            const correspondeTipo = filtroTipo === "" || tarefa.tipo === filtroTipo;
             const correspondeSituacao =
-                situacao.value === "" ||
-                (situacao.value === "concluida" && tarefa.concluida) ||
-                (situacao.value === "pendente" && !tarefa.concluida);
+                filtroSituacao === "" ||
+                (filtroSituacao === "pendentes" && !tarefa.concluida) ||
+                (filtroSituacao === "concluidas" && tarefa.concluida);
 
             return correspondeTipo && correspondeSituacao;
         });
+    }
 
-        resultados.textContent = filtradas.length === 1
-            ? "1 tarefa encontrada."
-            : `${filtradas.length} tarefas encontradas.`;
-
-        vazio.hidden = filtradas.length > 0;
+    function atualizarLista() {
+        const filtradas = filtrarTarefas();
+        lista.replaceChildren();
 
         filtradas.forEach(function (tarefa) {
-            const card = document.createElement("article");
-            card.className = "hoje-tarefa";
-            card.dataset.tarefaId = tarefa.id;
+            lista.append(criarCard(tarefa));
+        });
 
-            const cabecalho = document.createElement("div");
-            cabecalho.className = "hoje-tarefa__cabecalho";
+        vazio.hidden = filtradas.length !== 0;
 
-            cabecalho.append(
-                criarTexto(
-                    "span",
-                    tarefa.tipo === "medicacao" ? "Medicação" : "Vacinação",
-                    "hoje-tipo"
-                ),
-                criarTexto(
-                    "span",
-                    tarefa.concluida ? "Concluída" : "Pendente",
-                    "hoje-status"
-                )
-            );
+        if (filtradas.length === 0) {
+            resultados.textContent = "Nenhuma tarefa encontrada.";
+        } else if (filtradas.length === 1) {
+            resultados.textContent = "1 tarefa listada.";
+        } else {
+            resultados.textContent = `${filtradas.length} tarefas listadas.`;
+        }
+    }
 
-            card.append(
-                cabecalho,
-                criarTexto("h3", tarefa.animal),
-                criarTexto("p", tarefa.nome),
-                criarTexto(
-                    "p",
-                    tarefa.horario
-                        ? `Horário previsto: ${tarefa.horario}`
-                        : "Prevista para hoje — horário não informado"
-                )
-            );
-
-            if (tarefa.dosagem) {
-                card.append(
-                    criarTexto("p", `Dosagem: ${tarefa.dosagem}`)
-                );
-            }
-
-            if (tarefa.concluida) {
-                card.append(
-                    criarTexto(
-                        "p",
-                        `Registrada às ${tarefa.horarioRegistrado}.`
-                    )
-                );
-            }
-
-            const acoes = document.createElement("div");
-            acoes.className = "form-acoes";
-
-            const link = document.createElement("a");
-            link.className =
-                "botao botao--secundario hoje-link-ficha";
-            link.href = `/animais/${tarefa.animalId}`;
-            link.textContent = "Ver ficha";
-            link.setAttribute(
-                "aria-label",
-                `Ver ficha de ${tarefa.animal}`
-            );
-
-            acoes.append(link);
-
-            if (tarefa.tipo === "medicacao") {
-                const botao = document.createElement("button");
-                botao.type = "button";
-                botao.className = "botao botao--principal";
-                botao.disabled = tarefa.concluida;
-
-                botao.textContent = tarefa.concluida
-                    ? "Aplicação registrada"
-                    : "Registrar aplicação";
-
-                botao.setAttribute(
-                    "aria-label",
-                    `${botao.textContent}: ${tarefa.animal}, ${tarefa.horario}`
-                );
-
-                botao.addEventListener("click", function () {
-                    registrarAplicacao(tarefa);
-                });
-
-                acoes.append(botao);
-            } else {
-                card.append(
-                    criarTexto(
-                        "p",
-                        "A confirmação vinculada ao agendamento " +
-                        "ainda não está disponível nesta demonstração.",
-                        "ajuda"
-                    )
-                );
-            }
-
-            card.append(acoes);
-            lista.append(card);
+    if (tipo) tipo.addEventListener("change", atualizarLista);
+    if (situacao) situacao.addEventListener("change", atualizarLista);
+    if (limpar) {
+        limpar.addEventListener("click", function () {
+            if (tipo) tipo.value = "";
+            if (situacao) situacao.value = "";
+            atualizarLista();
         });
     }
 
-    tipo.addEventListener("change", renderizar);
-    situacao.addEventListener("change", renderizar);
-
-    limpar.addEventListener("click", function () {
-        tipo.value = "";
-        situacao.value = "";
-        renderizar();
-        tipo.focus();
-    });
-
-    renderizar();
+    carregarPainelHoje();
 })();

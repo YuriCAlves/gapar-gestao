@@ -47,9 +47,7 @@
     Cadastrar animal
 </a>
 
-        <p class="aviso-demo">
-            Demonstração: os animais abaixo são exemplos fictícios.
-        </p>
+        
 
         <form class="busca" role="search" aria-label="Buscar e filtrar animais">
             <div class="campo">
@@ -75,12 +73,12 @@
 
                     <select id="filtro-status" name="status">
                         <option value="">Todas as situações</option>
-                        <option value="acolhimento">Em acolhimento</option>
-                        <option value="tratamento">Em tratamento</option>
-                        <option value="disponivel">Disponível para adoção</option>
-                        <option value="lar-temporario">Lar temporário</option>
+                        <option value="em acolhimento">Em acolhimento</option>
+                        <option value="em tratamento">Em tratamento</option>
+                        <option value="disponível">Disponível para adoção</option>
+                        <option value="lar temporário">Lar temporário</option>
                         <option value="adotado">Adotado</option>
-                        <option value="obito">Óbito</option>
+                        <option value="óbito">Óbito</option>
                     </select>
                 </div>
 
@@ -144,109 +142,51 @@
                 <p>Ative o JavaScript no navegador para utilizar os filtros.</p>
             </noscript>
 
-            <div class="animais__lista">
+                        <div class="animais__lista" id="lista-animais">
+                {% for a in animais %}
                 <article
                     class="animal-card"
-                    data-status="acolhimento"
-                    data-porte="medio"
-                    data-sexo="macho"
-                    data-castrado="true"
-                    data-idoso="false"
+                    data-status="{{ a.status_operacional }}"
+                    data-porte="{{ a.porte | lower }}"
+                    data-sexo="{{ a.sexo | lower }}"
+                    data-castrado="{{ 'true' if a.is_castrado else 'false' }}"
+                    data-idoso="{{ 'true' if a.is_idoso else 'false' }}"
                 >
                     <div class="animal-card__foto">
-                        Foto não cadastrada
+                        {% if a.foto_url %}
+                            <img src="{{ a.foto_url }}" alt="Foto de {{ a.nome }}" class="animal-card__imagem">
+                        {% else %}
+                            Foto não cadastrada
+                        {% endif %}
                     </div>
 
                     <div class="animal-card__conteudo">
-                        <h3>Rex</h3>
+                        <h3>{{ a.nome }}</h3>
 
-                        <p class="animal-card__status status--acolhimento">
-                            Em acolhimento
+                        <p class="animal-card__status status--{{ a.status_operacional | replace(' ', '-') | lower }}">
+                            {{ a.status_operacional | capitalize }}
                         </p>
 
-                        <p>Macho · Porte médio</p>
+                        <p>{{ a.sexo }} · Porte {{ a.porte | lower }}</p>
 
                         <ul class="animal-card__marcadores" aria-label="Características">
-                            <li>Castrado</li>
+                            {% if a.is_castrado %}
+                                <li>Castrado</li>
+                            {% endif %}
+                            {% if a.is_idoso %}
+                                <li>Idoso</li>
+                            {% endif %}
                         </ul>
                         <a
-    class="botao botao--secundario link-ficha"
-    href="{{ url_for('core.ficha_animal', animal_id=1) }}"
-    aria-label="Ver ficha de Rex"
->
-    Ver ficha
-</a>
+                            class="botao botao--secundario link-ficha"
+                            href="{{ url_for('core.ficha_animal', animal_id=a.id) }}"
+                            aria-label="Ver ficha de {{ a.nome }}"
+                        >
+                            Ver ficha
+                        </a>
                     </div>
                 </article>
-
-                <article
-                    class="animal-card"
-                    data-status="tratamento"
-                    data-porte="pequeno"
-                    data-sexo="femea"
-                    data-castrado="false"
-                    data-idoso="true"
-                >
-                    <div class="animal-card__foto">
-                        Foto não cadastrada
-                    </div>
-
-                    <div class="animal-card__conteudo">
-                        <h3>Luna</h3>
-
-                        <p class="animal-card__status status--tratamento">
-                            Em tratamento
-                        </p>
-
-                        <p>Fêmea · Porte pequeno</p>
-
-                        <ul class="animal-card__marcadores" aria-label="Características">
-                            <li>Idosa</li>
-                        </ul>
-                        <a
-    class="botao botao--secundario link-ficha"
-    href="{{ url_for('core.ficha_animal', animal_id=2) }}"
-    aria-label="Ver ficha de Luna"
->
-    Ver ficha
-</a>
-                    </div>
-                </article>
-
-                <article
-                    class="animal-card"
-                    data-status="disponivel"
-                    data-porte="grande"
-                    data-sexo="macho"
-                    data-castrado="true"
-                    data-idoso="true"
-                >
-                    <div class="animal-card__foto">
-                        Foto não cadastrada
-                    </div>
-
-                    <div class="animal-card__conteudo">
-                        <h3>Thor</h3>
-
-                        <p class="animal-card__status status--disponivel">
-                            Disponível para adoção
-                        </p>
-
-                        <p>Macho · Porte grande</p>
-
-                        <ul class="animal-card__marcadores" aria-label="Características">
-                            <li>Castrado</li>
-                            <li>Idoso</li>
-                        </ul>
-                        <a
-    class="botao botao--secundario link-ficha"
-    href="{{ url_for('core.ficha_animal', animal_id=3) }}"
-    aria-label="Ver ficha de Thor"
->
-    Ver ficha
-</a>
-                    </div>
-                </article>
+                {% endfor %}
             </div>
 
             <div id="estado-vazio" class="estado-vazio" hidden>

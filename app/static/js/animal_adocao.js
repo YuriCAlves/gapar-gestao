@@ -5,6 +5,7 @@
         return;
     }
 
+    const animalId = Number(area.dataset.animalId);
     const formulario = document.querySelector("#form-adocao");
     const mensagem = document.querySelector("#adocao-mensagem");
     const registro = document.querySelector("#adocao-registro");
@@ -23,6 +24,7 @@
     }
 
     function formatarData(valor) {
+        if (!valor) return "Não informada";
         const [ano, mes, dia] = valor.split("-");
         return `${dia}/${mes}/${ano}`;
     }
@@ -33,6 +35,7 @@
 
         ["#painel-saude", "#painel-medicacoes"].forEach(function (seletor) {
             const painel = document.querySelector(seletor);
+            if (!painel) return;
 
             painel.querySelectorAll(
                 "input, select, textarea, button"
@@ -45,15 +48,14 @@
                 aviso.className = "informacao aviso-congelado";
                 aviso.textContent =
                     "Ficha somente para consulta. " +
-                    "Novos registros e aplicações estão bloqueados.";
+                    "Novos registros e aplicações estão bloqueados para este animal (RN05).";
 
                 painel.prepend(aviso);
             }
         });
     }
 
-    // Bloqueia também ações de botões que possam ser recriados
-    // dinamicamente pelos outros módulos.
+    // Bloqueia ações em caso de animal congelado
     conteudo.addEventListener("click", function (evento) {
         if (!congelado) {
             return;
@@ -82,8 +84,25 @@
         }
     }, true);
 
+    // Carrega histórico de adoção se já estiver adotado
+    async function carregarHistoricoAdocao() {
+        try {
+            const resp = await fetch(`/api/adocoes/${animalId}`);
+            if (resp.ok) {
+                const dados = await resp.json();
+                if (dados.adocao) {
+                    mostrarRegistro(dados.adocao);
+                    bloquearOperacoes();
+                }
+            }
+        } catch (e) {
+            console.error("Erro ao carregar histórico de adoção:", e);
+        }
+    }
+
     if (congelado) {
         bloquearOperacoes();
+        carregarHistoricoAdocao();
         return;
     }
 
@@ -123,7 +142,7 @@
         telefone.setCustomValidity(
             caracteresValidos && tamanhoValido
                 ? ""
-                : "Informe um telefone com DDD ou um número internacional com +."
+                : "Informe um telefone com DDD ou número com +."
         );
     }
 
@@ -132,7 +151,7 @@
         artigo.className = "saude-registro";
 
         const titulo = document.createElement("h3");
-        titulo.textContent = "Adoção de exemplo registrada";
+        titulo.textContent = "Adoção Formal Registrada";
 
         const detalhes = document.createElement("dl");
         detalhes.className = "saude-detalhes";
@@ -140,9 +159,10 @@
         const campos = [
             ["Adotante", dados.adotante_nome],
             ["Telefone", dados.adotante_telefone],
+            ["CPF", dados.adotante_cpf || "Não informado"],
             ["Data da adoção", formatarData(dados.data_adocao)],
             ["Termo assinado", dados.termo_assinado ? "Sim" : "Não"],
-            ["Observações", dados.observacoes || "Não informadas"]
+            ["Observações", dados.observacoes || "Nenhuma"]
         ];
 
         campos.forEach(function ([rotulo, valor]) {
@@ -164,7 +184,7 @@
     nome.addEventListener("input", validarNome);
     telefone.addEventListener("input", validarTelefone);
 
-    formulario.addEventListener("submit", function (evento) {
+    formulario.addEventListener("submit", async function (evento) {
         evento.preventDefault();
 
         prepararData();
@@ -176,9 +196,8 @@
         }
 
         const confirmou = window.confirm(
-            "Confirmar esta adoção de exemplo?\n\n" +
-            "A ficha ficará somente para consulta nesta página. " +
-            "Nenhuma informação será salva no banco."
+            "Confirmar formalização desta adoção?\n\n" +
+            "A ficha do animal será permanentemente congelada para novos cadastros ou procedimentos clínicos (RN05)."
         );
 
         if (!confirmou) {
@@ -187,36 +206,49 @@
 
         const valores = new FormData(formulario);
 
-        const dadosAdocao = {
-            animal_id: Number(area.dataset.animalId),
+        const payload = {
             adotante_nome: valores.get("adotante_nome").trim(),
             adotante_telefone: valores.get("adotante_telefone").trim(),
+            adotante_cpf: valores.get("adotante_cpf") ? valores.get("adotante_cpf").trim() : "",
             data_adocao: valores.get("data_adocao"),
             termo_assinado: valores.has("termo_assinado"),
-            observacoes: valores.get("observacoes").trim() || null
+            termo_fisico_assinado: valores.has("termo_assinado"),
+            observacoes: valores.get("observacoes") ? valores.get("observacoes").trim() : ""
         };
 
-        mostrarRegistro(dadosAdocao);
+        mensagem.className = "form-mensagem";
+        mensagem.textContent = "Processando registro de adoção e consultando validações...";
 
-        area.dataset.status = "adotado";
+        try {
+            const resposta = await fetch(`/api/adocoes/${animalId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
 
-        const situacao = document.querySelector(".ficha-situacao");
-        situacao.textContent = "Adotado — demonstração";
+            const resultado = await resposta.json();
 
-        const areaMedicacoes = document.querySelector("#medicacoes-demo");
+            if (resposta.ok && resultado.sucesso) {
+                mostrarRegistro(resultado.adocao);
 
-        if (areaMedicacoes) {
-            areaMedicacoes.dataset.status = "adotado";
+                area.dataset.status = "adotado";
+                const situacao = document.querySelector(".ficha-situacao");
+                if (situacao) situacao.textContent = "Adotado";
+
+                bloquearOperacoes();
+                formulario.reset();
+                formulario.hidden = true;
+
+                mensagem.className = "form-mensagem form-mensagem--sucesso";
+                mensagem.textContent = "Adoção registrada com sucesso! A ficha do cão foi congelada (RN05).";
+            } else {
+                mensagem.className = "form-mensagem form-mensagem--erro";
+                mensagem.textContent = resultado.mensagem || resultado.erro || "Não foi possível registrar a adoção.";
+            }
+        } catch (erro) {
+            mensagem.className = "form-mensagem form-mensagem--erro";
+            mensagem.textContent = "Erro na comunicação com o servidor. Verifique a conexão.";
         }
-
-        bloquearOperacoes();
-
-        formulario.reset();
-        formulario.hidden = true;
-
-        mensagem.textContent =
-            "Adoção simulada. Esta ficha está somente para consulta. " +
-            "Nenhum dado foi salvo; atualizar a página desfaz a demonstração.";
 
         mensagem.scrollIntoView({ block: "nearest" });
     });
@@ -229,4 +261,5 @@
     });
 
     prepararData();
+    carregarHistoricoAdocao();
 })();

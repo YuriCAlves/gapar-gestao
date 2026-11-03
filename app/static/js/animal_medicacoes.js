@@ -5,15 +5,15 @@
         return;
     }
 
+    const animalId = Number(area.dataset.animalId);
     const statusPermitidos = [
         "em acolhimento",
         "em tratamento",
+        "disponível",
         "lar temporário"
     ];
 
-    const permitePrescricao = statusPermitidos.includes(
-        area.dataset.status
-    );
+    const permitePrescricao = statusPermitidos.includes(area.dataset.status);
 
     const formulario = document.querySelector("#form-prescricao");
     const listaPrescricoes = document.querySelector("#lista-prescricoes");
@@ -22,340 +22,195 @@
     const aplicacoesVazio = document.querySelector("#aplicacoes-vazio");
     const mensagemAplicacao = document.querySelector("#mensagem-aplicacao");
 
-    const prescricoes = [];
-    const aplicacoes = [];
-    let proximoId = 1;
-
     function dataLocal(data = new Date()) {
         const ano = data.getFullYear();
         const mes = String(data.getMonth() + 1).padStart(2, "0");
         const dia = String(data.getDate()).padStart(2, "0");
-
         return `${ano}-${mes}-${dia}`;
     }
 
-    function horaLocal(data = new Date()) {
-        const hora = String(data.getHours()).padStart(2, "0");
-        const minuto = String(data.getMinutes()).padStart(2, "0");
-
-        return `${hora}:${minuto}`;
-    }
-
     function formatarData(valor) {
+        if (!valor) return "Não informada";
         const [ano, mes, dia] = valor.split("-");
         return `${dia}/${mes}/${ano}`;
     }
 
-    function situacaoPrescricao(prescricao) {
-        const hoje = dataLocal();
+    async function carregarPrescricoes() {
+        try {
+            const resp = await fetch(`/api/saude/prescricoes/${animalId}`);
+            if (!resp.ok) return;
 
-        if (hoje < prescricao.data_inicio) {
-            return "Programada";
-        }
+            const dados = await resp.json();
+            const prescricoes = dados.prescricoes || [];
 
-        if (hoje > prescricao.data_fim) {
-            return "Encerrada";
-        }
+            listaPrescricoes.replaceChildren();
 
-        return "Ativa";
-    }
-
-    function doseRegistrada(prescricaoId, horario) {
-        return aplicacoes.some(function (aplicacao) {
-            return (
-                aplicacao.prescription_id === prescricaoId &&
-                aplicacao.horario_previsto === horario &&
-                aplicacao.data_aplicacao === dataLocal()
-            );
-        });
-    }
-
-    function criarRegistro(titulo, campos) {
-        const artigo = document.createElement("article");
-        artigo.className = "saude-registro";
-
-        const cabecalho = document.createElement("h4");
-        cabecalho.textContent = titulo;
-
-        const detalhes = document.createElement("dl");
-        detalhes.className = "saude-detalhes";
-
-        campos.forEach(function ([rotulo, valor]) {
-            const grupo = document.createElement("div");
-            const termo = document.createElement("dt");
-            const descricao = document.createElement("dd");
-
-            termo.textContent = rotulo;
-            descricao.textContent = valor || "Não informado";
-
-            grupo.append(termo, descricao);
-            detalhes.append(grupo);
-        });
-
-        artigo.append(cabecalho, detalhes);
-        return artigo;
-    }
-
-    function mostrarAplicacoes() {
-        listaAplicacoes.replaceChildren();
-
-        const aplicacoesHoje = aplicacoes.filter(function (aplicacao) {
-            return aplicacao.data_aplicacao === dataLocal();
-        });
-
-        aplicacoesVazio.hidden = aplicacoesHoje.length > 0;
-
-        [...aplicacoesHoje].reverse().forEach(function (aplicacao) {
-            const prescricao = prescricoes.find(function (item) {
-                return item.id === aplicacao.prescription_id;
-            });
-
-            listaAplicacoes.append(
-                criarRegistro(prescricao.nome_medicamento, [
-                    ["Data", formatarData(aplicacao.data_aplicacao)],
-                    ["Horário previsto", aplicacao.horario_previsto],
-                    ["Horário registrado", aplicacao.horario_aplicado]
-                ])
-            );
-        });
-    }
-
-    function registrarAplicacao(prescricao, horario) {
-        if (
-            !permitePrescricao ||
-            situacaoPrescricao(prescricao) !== "Ativa"
-        ) {
-            mensagemAplicacao.textContent =
-                "Esta prescrição não permite aplicação nesta demonstração.";
-            mostrarPrescricoes();
-            return;
-        }
-
-        if (doseRegistrada(prescricao.id, horario)) {
-            mensagemAplicacao.textContent =
-                "Essa dose já foi registrada hoje.";
-            return;
-        }
-
-        const confirmou = window.confirm(
-            `Confirma que a dose de ${prescricao.nome_medicamento}, ` +
-            `prevista para ${horario}, já foi aplicada?\n\n` +
-            "Este registro é apenas uma demonstração."
-        );
-
-        if (!confirmou) {
-            return;
-        }
-
-        const agora = new Date();
-
-        if (
-            situacaoPrescricao(prescricao) !== "Ativa" ||
-            doseRegistrada(prescricao.id, horario)
-        ) {
-            mostrarPrescricoes();
-            return;
-        }
-
-        aplicacoes.push({
-            prescription_id: prescricao.id,
-            data_aplicacao: dataLocal(agora),
-            horario_previsto: horario,
-            horario_aplicado: horaLocal(agora),
-            observacoes: null
-        });
-
-        mostrarPrescricoes();
-        mostrarAplicacoes();
-
-        mensagemAplicacao.textContent =
-            "Aplicação registrada somente nesta página. " +
-            "Nenhum dado foi salvo no banco.";
-    }
-
-    function mostrarPrescricoes() {
-        listaPrescricoes.replaceChildren();
-        prescricoesVazio.hidden = prescricoes.length > 0;
-
-        prescricoes.forEach(function (prescricao) {
-            const situacao = situacaoPrescricao(prescricao);
-
-            const artigo = criarRegistro(
-                prescricao.nome_medicamento,
-                [
-                    ["Dosagem prescrita", prescricao.dosagem],
-                    ["Horários", prescricao.horarios],
-                    ["Início", formatarData(prescricao.data_inicio)],
-                    ["Fim", formatarData(prescricao.data_fim)],
-                    ["Situação", situacao],
-                    ["Instruções", prescricao.instrucoes]
-                ]
-            );
-
-            if (situacao === "Ativa" && permitePrescricao) {
-                const tituloDoses = document.createElement("h5");
-                tituloDoses.textContent =
-                    `Doses de hoje — ${formatarData(dataLocal())}`;
-
-                const acoes = document.createElement("div");
-                acoes.className = "medicacao-doses";
-
-                prescricao.horarios.split(", ").forEach(function (horario) {
-                    const registrada = doseRegistrada(
-                        prescricao.id,
-                        horario
-                    );
-
-                    const botao = document.createElement("button");
-                    botao.type = "button";
-                    botao.className = "botao botao--secundario";
-                    botao.disabled = registrada;
-
-                    botao.textContent = registrada
-                        ? `${horario} — registrada`
-                        : `Registrar aplicação — ${horario}`;
-
-                    botao.setAttribute(
-                        "aria-label",
-                        `${botao.textContent}: ${prescricao.nome_medicamento}`
-                    );
-
-                    botao.addEventListener("click", function () {
-                        registrarAplicacao(prescricao, horario);
-                    });
-
-                    acoes.append(botao);
-                });
-
-                artigo.append(tituloDoses, acoes);
+            if (prescricoes.length === 0) {
+                if (prescricoesVazio) prescricoesVazio.hidden = false;
+                return;
             }
 
-            listaPrescricoes.append(artigo);
-        });
-    }
+            if (prescricoesVazio) prescricoesVazio.hidden = true;
 
-    if (!formulario || !permitePrescricao) {
-        return;
-    }
+            prescricoes.forEach(function (p) {
+                const artigo = document.createElement("article");
+                artigo.className = "saude-registro";
 
-    const nome = document.querySelector("#medicamento-nome");
-    const dose = document.querySelector("#medicamento-dose");
-    const horarios = document.querySelector("#medicamento-horarios");
-    const inicio = document.querySelector("#medicamento-inicio");
-    const fim = document.querySelector("#medicamento-fim");
-    const mensagemPrescricao = document.querySelector("#mensagem-prescricao");
+                const titulo = document.createElement("h4");
+                titulo.textContent = `${p.nome_medicamento} — ${p.dosagem}`;
 
-    function validarTexto(campo) {
-        campo.setCustomValidity(
-            campo.value.trim() === ""
-                ? "Preencha este campo com um texto válido."
-                : ""
-        );
-    }
+                const detalhes = document.createElement("dl");
+                detalhes.className = "saude-detalhes";
 
-    function validarHorarios() {
-        horarios.setCustomValidity("");
+                const campos = [
+                    ["Horários prescritos", p.horarios],
+                    ["Período", `${formatarData(p.data_inicio)} até ${formatarData(p.data_fim)}`],
+                    ["Status", p.is_active ? "Em andamento" : "Finalizada / Programada"],
+                    ["Instruções", p.instrucoes || "Nenhuma"]
+                ];
 
-        const valores = horarios.value
-            .split(",")
-            .map(function (horario) {
-                return horario.trim();
+                campos.forEach(function ([rotulo, valor]) {
+                    const grupo = document.createElement("div");
+                    const termo = document.createElement("dt");
+                    const desc = document.createElement("dd");
+                    termo.textContent = rotulo;
+                    desc.textContent = valor;
+                    grupo.append(termo, desc);
+                    detalhes.append(grupo);
+                });
+
+                artigo.append(titulo, detalhes);
+
+                // Doses do dia de hoje para dar baixa
+                if (p.is_active && permitePrescricao) {
+                    const areaDoses = document.createElement("div");
+                    areaDoses.className = "doses-hoje";
+                    areaDoses.style.marginTop = "1rem";
+                    areaDoses.style.paddingTop = "0.75rem";
+                    areaDoses.style.borderTop = "1px solid var(--cor-borda, #ddd)";
+
+                    const labelDoses = document.createElement("p");
+                    labelDoses.innerHTML = "<strong>Doses de Hoje:</strong>";
+                    areaDoses.append(labelDoses);
+
+                    const horarios = (p.horarios || "").split(",").map(h => h.strip ? h.strip() : h.trim()).filter(Boolean);
+                    const logsHoje = p.logs_hoje || [];
+                    const horariosAplicados = new Set(logsHoje.map(l => l.horario_previsto));
+
+                    const containerBotoes = document.createElement("div");
+                    containerBotoes.style.display = "flex";
+                    containerBotoes.style.gap = "0.5rem";
+                    containerBotoes.style.flexWrap = "wrap";
+                    containerBotoes.style.marginTop = "0.5rem";
+
+                    horarios.forEach(function (h) {
+                        const btn = document.createElement("button");
+                        btn.type = "button";
+                        btn.className = "botao botao--secundario";
+                        btn.style.fontSize = "0.875rem";
+
+                        if (horariosAplicados.has(h)) {
+                            btn.textContent = `✓ Dose das ${h} aplicada`;
+                            btn.disabled = true;
+                            btn.style.opacity = "0.7";
+                        } else {
+                            btn.textContent = `Dar baixa (${h})`;
+                            btn.addEventListener("click", function () {
+                                darBaixa(p.id, h, btn);
+                            });
+                        }
+
+                        containerBotoes.append(btn);
+                    });
+
+                    areaDoses.append(containerBotoes);
+                    artigo.append(areaDoses);
+                }
+
+                listaPrescricoes.append(artigo);
             });
-
-        const formatoValido = valores.every(function (horario) {
-            return /^([01]\d|2[0-3]):[0-5]\d$/.test(horario);
-        });
-
-        if (!formatoValido) {
-            horarios.setCustomValidity(
-                "Use horários como 08:00, 20:00, entre 00:00 e 23:59."
-            );
-        } else if (new Set(valores).size !== valores.length) {
-            horarios.setCustomValidity(
-                "Não repita o mesmo horário na prescrição."
-            );
-        }
-
-        return valores;
-    }
-
-    function validarPeriodo() {
-        fim.setCustomValidity("");
-
-        if (inicio.value) {
-            fim.min = inicio.value;
-        } else {
-            fim.removeAttribute("min");
-        }
-
-        if (inicio.value && fim.value && fim.value < inicio.value) {
-            fim.setCustomValidity(
-                "A data final não pode ser anterior à inicial."
-            );
+        } catch (e) {
+            console.error("Erro ao carregar prescrições:", e);
         }
     }
 
-    [nome, dose].forEach(function (campo) {
-        campo.addEventListener("input", function () {
-            validarTexto(campo);
-        });
-    });
-
-    horarios.addEventListener("input", validarHorarios);
-    inicio.addEventListener("input", validarPeriodo);
-    fim.addEventListener("input", validarPeriodo);
-
-    formulario.addEventListener("input", function () {
-        mensagemPrescricao.textContent = "";
-    });
-
-    formulario.addEventListener("submit", function (evento) {
-        evento.preventDefault();
-
-        validarTexto(nome);
-        validarTexto(dose);
-        const horariosValidados = validarHorarios();
-        validarPeriodo();
-
-        if (!formulario.reportValidity()) {
+    async function darBaixa(prescricaoId, horario, btnElement) {
+        if (!window.confirm(`Confirma a administração da dose de ${horario}?`)) {
             return;
         }
 
-        const dados = new FormData(formulario);
+        btnElement.disabled = true;
+        btnElement.textContent = "Gravando...";
 
-        prescricoes.push({
-            id: proximoId++,
-            animal_id: Number(area.dataset.animalId),
-            nome_medicamento: dados.get("nome_medicamento").trim(),
-            dosagem: dados.get("dosagem").trim(),
-            horarios: horariosValidados.sort().join(", "),
-            data_inicio: dados.get("data_inicio"),
-            data_fim: dados.get("data_fim"),
-            instrucoes: dados.get("instrucoes").trim() || null
+        try {
+            const resp = await fetch(`/api/saude/medicacao/baixa/${prescricaoId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ horario_previsto: horario })
+            });
+
+            const dados = await resp.json();
+            if (resp.ok && dados.sucesso) {
+                btnElement.textContent = `✓ Dose das ${horario} aplicada`;
+                btnElement.style.opacity = "0.7";
+                if (mensagemAplicacao) {
+                    mensagemAplicacao.className = "form-mensagem form-mensagem--sucesso";
+                    mensagemAplicacao.textContent = `Baixa registrada com sucesso para o horário ${horario}!`;
+                }
+            } else {
+                btnElement.disabled = false;
+                btnElement.textContent = `Dar baixa (${horario})`;
+                if (mensagemAplicacao) {
+                    mensagemAplicacao.className = "form-mensagem form-mensagem--erro";
+                    mensagemAplicacao.textContent = dados.mensagem || "Não foi possível registrar a baixa.";
+                }
+            }
+        } catch (e) {
+            btnElement.disabled = false;
+            btnElement.textContent = `Dar baixa (${horario})`;
+        }
+    }
+
+    if (formulario && permitePrescricao) {
+        formulario.addEventListener("submit", async function (evento) {
+            evento.preventDefault();
+
+            const dadosForm = new FormData(formulario);
+            const payload = {
+                nome_medicamento: dadosForm.get("nome_medicamento").trim(),
+                dosagem: dadosForm.get("dosagem").trim(),
+                horarios: dadosForm.get("horarios").trim(),
+                data_inicio: dadosForm.get("data_inicio"),
+                data_fim: dadosForm.get("data_fim"),
+                instrucoes: dadosForm.get("instrucoes") ? dadosForm.get("instrucoes").trim() : ""
+            };
+
+            try {
+                const resp = await fetch(`/api/saude/prescricoes/${animalId}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                const resultado = await resp.json();
+                if (resp.ok && resultado.sucesso) {
+                    formulario.reset();
+                    carregarPrescricoes();
+                    if (mensagemAplicacao) {
+                        mensagemAplicacao.className = "form-mensagem form-mensagem--sucesso";
+                        mensagemAplicacao.textContent = "Nova prescrição cadastrada com sucesso!";
+                    }
+                } else {
+                    if (mensagemAplicacao) {
+                        mensagemAplicacao.className = "form-mensagem form-mensagem--erro";
+                        mensagemAplicacao.textContent = resultado.mensagem || "Erro ao salvar prescrição.";
+                    }
+                }
+            } catch (e) {
+                console.error("Erro ao salvar prescrição:", e);
+            }
         });
+    }
 
-        mostrarPrescricoes();
-        formulario.reset();
-
-        mensagemPrescricao.textContent =
-            "Prescrição adicionada somente à demonstração. " +
-            "Nenhum dado foi salvo ou enviado ao Google Agenda.";
-    });
-
-    formulario.addEventListener("reset", function () {
-        [nome, dose, horarios, fim].forEach(function (campo) {
-            campo.setCustomValidity("");
-        });
-
-        fim.removeAttribute("min");
-        mensagemPrescricao.textContent = "";
-
-        setTimeout(function () {
-            inicio.value = dataLocal();
-            validarPeriodo();
-        }, 0);
-    });
-
-    inicio.value = dataLocal();
-    validarPeriodo();
+    carregarPrescricoes();
 })();
