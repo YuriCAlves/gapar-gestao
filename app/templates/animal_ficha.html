@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>{{ animal.nome }} | GAPAR Gestão</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+
+    <script
+        src="{{ url_for('static', filename='js/animal_ficha.js') }}"
+        defer
+    ></script>
+    <script
+        src="{{ url_for('static', filename='js/animal_saude.js') }}"
+        defer
+    ></script>    
+    <script
+        src="{{ url_for('static', filename='js/animal_medicacoes.js', v=3) }}"
+        defer
+    ></script>
+    <script
+        src="{{ url_for('static', filename='js/animal_vacinas_agenda.js') }}"
+        defer
+    ></script>
+    <script
+         src="{{ url_for('static', filename='js/animal_adocao.js') }}"
+         defer
+    ></script>
+</head>
+
+<body>
+    <a class="pular-conteudo" href="#conteudo">
+        Pular para o conteúdo
+    </a>
+
+    <header class="cabecalho">
+        <div class="cabecalho__conteudo">
+            <p class="marca">GAPAR Gestão</p>
+            <span>Cuidado e proteção animal</span>
+        </div>
+    </header>
+
+    <main id="conteudo">
+        <a class="voltar" href="{{ url_for('core.pagina_animais') }}">
+            ← Voltar para animais
+        </a>
+
+        <p class="aviso-demo">
+            Demonstração: esta ficha utiliza dados fictícios.
+            Nenhuma alteração é salva no banco.
+        </p>
+
+        <section class="ficha-resumo" aria-labelledby="nome-animal">
+            <div class="ficha-resumo__foto">
+                Foto não cadastrada
+            </div>
+
+            <div>
+                <p class="descricao">Ficha do animal</p>
+                <h1 id="nome-animal">{{ animal.nome }}</h1>
+
+                <p class="ficha-situacao">
+                    {% if animal.status_operacional == "disponível" %}
+                        Disponível para adoção
+                    {% else %}
+                        {{ animal.status_operacional | capitalize }}
+                    {% endif %}
+                </p>
+
+                <p>{{ animal.sexo }} · Porte {{ animal.porte | lower }}</p>
+
+                <ul class="animal-card__marcadores" aria-label="Características">
+                    {% if animal.is_castrado %}
+                        <li>Castrado</li>
+                    {% endif %}
+
+                    {% if animal.is_idoso %}
+                        <li>Idoso</li>
+                    {% endif %}
+                </ul>
+            </div>
+        </section>
+
+        <div
+            class="ficha-abas"
+            role="tablist"
+            aria-label="Informações do animal"
+        >
+            <button
+                id="aba-dados"
+                class="ficha-aba"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                aria-controls="painel-dados"
+                tabindex="0"
+            >
+                Dados gerais
+            </button>
+
+            <button
+                id="aba-saude"
+                class="ficha-aba"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="painel-saude"
+                tabindex="-1"
+            >
+                Saúde
+            </button>
+
+            <button
+                id="aba-medicacoes"
+                class="ficha-aba"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="painel-medicacoes"
+                tabindex="-1"
+            >
+                Medicações
+            </button>
+
+            <button
+                id="aba-adocao"
+                class="ficha-aba"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="painel-adocao"
+                tabindex="-1"
+            >
+                Adoção
+            </button>
+        </div>
+
+        <section
+            id="painel-dados"
+            class="ficha-painel"
+            role="tabpanel"
+            aria-labelledby="aba-dados"
+            tabindex="0"
+        >
+            <h2>Dados gerais</h2>
+
+            <dl class="ficha-dados">
+                <div>
+                    <dt>Nome</dt>
+                    <dd>{{ animal.nome }}</dd>
+                </div>
+
+                <div>
+                    <dt>Sexo</dt>
+                    <dd>{{ animal.sexo }}</dd>
+                </div>
+
+                <div>
+                    <dt>Porte</dt>
+                    <dd>{{ animal.porte }}</dd>
+                </div>
+
+                <div>
+                    <dt>Idade estimada</dt>
+                    <dd>Não informada</dd>
+                </div>
+
+                <div>
+                    <dt>Raça</dt>
+                    <dd>Não informada</dd>
+                </div>
+
+                <div>
+                    <dt>Pelagem</dt>
+                    <dd>Não informada</dd>
+                </div>
+
+                <div>
+                    <dt>Peso aproximado</dt>
+                    <dd>Não informado</dd>
+                </div>
+
+                <div>
+                    <dt>Castrado</dt>
+                    <dd>{{ "Sim" if animal.is_castrado else "Não" }}</dd>
+                </div>
+
+                <div>
+                    <dt>Idoso</dt>
+                    <dd>{{ "Sim" if animal.is_idoso else "Não" }}</dd>
+                </div>
+
+                <div>
+                    <dt>Data de entrada</dt>
+                    <dd>Não informada</dd>
+                </div>
+
+                <div>
+                    <dt>Local do resgate</dt>
+                    <dd>Não informado</dd>
+                </div>
+
+                <div>
+                    <dt>Motivo do resgate</dt>
+                    <dd>Não informado</dd>
+                </div>
+
+                <div>
+                    <dt>Cuidados especiais</dt>
+                    <dd>Não informados</dd>
+                </div>
+            </dl>
+        </section>
+
+<section
+    id="painel-saude"
+    class="ficha-painel"
+    role="tabpanel"
+    aria-labelledby="aba-saude"
+    tabindex="0"
+    hidden
+>
+    {% include "_animal_saude.html" %}
+</section>
+
+<section
+    id="painel-medicacoes"
+    class="ficha-painel"
+    role="tabpanel"
+    aria-labelledby="aba-medicacoes"
+    tabindex="0"
+    hidden
+>
+    {% include "_animal_medicacoes.html" %}
+</section>
+
+<section
+    id="painel-adocao"
+    class="ficha-painel"
+    role="tabpanel"
+    aria-labelledby="aba-adocao"
+    tabindex="0"
+    hidden
+>
+    {% include "_animal_adocao.html" %}
+</section>
+
+        <noscript>
+            <p>Ative o JavaScript para navegar entre as abas da ficha.</p>
+        </noscript>
+    </main>
+</body>
+</html>

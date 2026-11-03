@@ -1,0 +1,100 @@
+<h2>Adoção</h2>
+
+<p class="informacao">
+    Demonstração: use dados fictícios. Nenhuma informação será salva.
+    Ao atualizar a página, a adoção de exemplo será desfeita.
+</p>
+
+<div
+    id="adocao-demo"
+    data-animal-id="{{ animal.id }}"
+    data-status="{{ animal.status_operacional }}"
+>
+    {% if animal.status_operacional not in ["adotado", "óbito"] %}
+        <form id="form-adocao" class="saude-form">
+            <p class="informacao">
+                Após a confirmação, esta ficha ficará somente para
+                consulta nesta demonstração.
+                Campos com * são obrigatórios.
+            </p>
+
+            <div class="form-grade">
+                <div class="campo">
+                    <label for="adotante-nome">Nome do adotante *</label>
+                    <input
+                        id="adotante-nome"
+                        name="adotante_nome"
+                        type="text"
+                        maxlength="150"
+                        required
+                    >
+                </div>
+
+                <div class="campo">
+                    <label for="adotante-telefone">Telefone de contato *</label>
+                    <input
+                        id="adotante-telefone"
+                        name="adotante_telefone"
+                        type="tel"
+                        maxlength="30"
+                        placeholder="DDD e número"
+                        aria-describedby="telefone-ajuda"
+                        required
+                    >
+                    <p id="telefone-ajuda" class="ajuda">
+                        Informe o DDD. Para números internacionais,
+                        inclua + e o código do país.
+                    </p>
+                </div>
+
+                <div class="campo">
+                    <label for="adocao-data">Data da adoção *</label>
+                    <input
+                        id="adocao-data"
+                        name="data_adocao"
+                        type="date"
+                        required
+                    >
+                </div>
+
+                <div class="campo campo--inteiro">
+                    <label class="opcao" for="termo-assinado">
+                        <input
+                            id="termo-assinado"
+                            name="termo_assinado"
+                            type="checkbox"
+                        >
+                        O termo de adoção foi assinado
+                    </label>
+                </div>
+
+                <div class="campo campo--inteiro">
+                    <label for="adocao-observacoes">Observações</label>
+                    <textarea
+                        id="adocao-observacoes"
+                        name="observacoes"
+                        rows="4"
+                    ></textarea>
+                </div>
+            </div>
+
+            <div class="form-acoes adocao-acoes">
+                <button class="botao botao--principal" type="submit">
+                    Confirmar adoção de exemplo
+                </button>
+
+                <button class="botao botao--secundario" type="reset">
+                    Limpar campos
+                </button>
+            </div>
+        </form>
+    {% else %}
+        <p class="informacao">
+            Este animal está com a ficha encerrada para alterações.
+        </p>
+    {% endif %}
+
+    <p id="adocao-mensagem" class="form-mensagem" role="status"></p>
+
+    <div id="adocao-registro" class="saude-registros"></div>
+</div>

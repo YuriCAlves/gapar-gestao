@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Cadastrar animal | GAPAR Gestão</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+
+    <script
+        src="{{ url_for('static', filename='js/animal_formulario.js') }}"
+        defer
+    ></script>
+</head>
+
+<body>
+    <a class="pular-conteudo" href="#conteudo">
+        Pular para o conteúdo
+    </a>
+
+    <header class="cabecalho">
+        <div class="cabecalho__conteudo">
+            <p class="marca">GAPAR Gestão</p>
+            <span>Cuidado e proteção animal</span>
+        </div>
+    </header>
+
+    <main id="conteudo">
+        <a class="voltar" href="{{ url_for('core.pagina_animais') }}">
+            ← Voltar para animais
+        </a>
+
+        <h1>Cadastrar animal</h1>
+        <p class="descricao">
+            Preencha os dados do animal acolhido.
+            Campos com * são obrigatórios.
+        </p>
+
+        <p class="aviso-demo">
+            Demonstração: este formulário valida os dados,
+            mas ainda não salva o cadastro nem envia a foto.
+        </p>
+
+        <form id="form-animal" class="form-animal">
+            <fieldset class="form-secao">
+                <legend>Dados do animal</legend>
+
+                <div class="form-grade">
+                    <div class="campo">
+                        <label for="nome">Nome *</label>
+                        <input
+                            id="nome"
+                            name="nome"
+                            type="text"
+                            maxlength="100"
+                            required
+                        >
+                    </div>
+
+                    <div class="campo">
+                        <label for="idade">Idade estimada</label>
+                        <input
+                            id="idade"
+                            name="idade_estimada"
+                            type="text"
+                            maxlength="50"
+                            placeholder="Ex.: 2 anos ou 6 meses"
+                        >
+                    </div>
+
+                    <div class="campo">
+                        <label for="sexo">Sexo *</label>
+                        <select id="sexo" name="sexo" required>
+                            <option value="">Selecione</option>
+                            <option value="Macho">Macho</option>
+                            <option value="Fêmea">Fêmea</option>
+                        </select>
+                    </div>
+
+                    <div class="campo">
+                        <label for="porte">Porte *</label>
+                        <select id="porte" name="porte" required>
+                            <option value="">Selecione</option>
+                            <option value="Pequeno">Pequeno</option>
+                            <option value="Médio">Médio</option>
+                            <option value="Grande">Grande</option>
+                        </select>
+                    </div>
+
+                    <div class="campo">
+                        <label for="raca">Raça *</label>
+                        <input
+                            id="raca"
+                            name="raca"
+                            type="text"
+                            maxlength="100"
+                            value="Sem Raça Definida (SRD)"
+                            required
+                        >
+                    </div>
+
+                    <div class="campo">
+                        <label for="pelagem">Pelagem</label>
+                        <input
+                            id="pelagem"
+                            name="pelagem"
+                            type="text"
+                            maxlength="50"
+                            placeholder="Ex.: preta com manchas brancas"
+                        >
+                    </div>
+
+                    <div class="campo">
+                        <label for="peso">Peso aproximado em kg</label>
+                        <input
+                            id="peso"
+                            name="peso_kg"
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            placeholder="Ex.: 12,5"
+                        >
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="form-secao">
+                <legend>Foto do animal</legend>
+
+                <div class="campo">
+                    <label for="foto">Selecionar foto</label>
+                    <input
+                        id="foto"
+                        name="foto"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        aria-describedby="foto-ajuda"
+                    >
+                    <p id="foto-ajuda" class="ajuda">
+                        JPEG, PNG ou WebP. Limite de 5 MB nesta demonstração.
+                    </p>
+                </div>
+
+                <p id="foto-mensagem" role="status"></p>
+
+                <div id="foto-previa" class="foto-previa" hidden>
+                    <img id="imagem-previa" alt="Prévia da foto selecionada">
+                    <button
+                        id="remover-foto"
+                        class="botao botao--secundario"
+                        type="button"
+                    >
+                        Remover foto
+                    </button>
+                </div>
+            </fieldset>
+
+            <fieldset class="form-secao">
+                <legend>Origem e acolhimento</legend>
+
+                <p class="informacao">
+                    O cadastro será iniciado como “Em acolhimento”.
+                    Na integração, a data de entrada será definida
+                    pelo servidor como a data do cadastro.
+                </p>
+
+                <div class="form-grade">
+                    <div class="campo campo--inteiro">
+                        <label for="local">Local do resgate</label>
+                        <input
+                            id="local"
+                            name="local_resgate"
+                            type="text"
+                            maxlength="200"
+                            placeholder="Bairro, rua ou ponto de referência"
+                        >
+                    </div>
+
+                    <div class="campo campo--inteiro">
+                        <label for="motivo">Motivo e histórico do resgate</label>
+                        <textarea
+                            id="motivo"
+                            name="motivo_resgate"
+                            rows="4"
+                            placeholder="Descreva as condições em que o animal foi encontrado."
+                        ></textarea>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="form-secao">
+                <legend>Características e cuidados</legend>
+
+                <div class="caracteristicas__opcoes">
+                    <label class="opcao" for="castrado">
+                        <input
+                            id="castrado"
+                            name="is_castrado"
+                            type="checkbox"
+                        >
+                        Castrado
+                    </label>
+
+                    <label class="opcao" for="idoso">
+                        <input
+                            id="idoso"
+                            name="is_idoso"
+                            type="checkbox"
+                        >
+                        Idoso
+                    </label>
+                </div>
+
+                <div class="campo cuidados-campo">
+                    <label for="cuidados">Cuidados especiais</label>
+                    <textarea
+                        id="cuidados"
+                        name="cuidados_especiais"
+                        rows="4"
+                        placeholder="Informe necessidades específicas, se houver."
+                    ></textarea>
+                </div>
+            </fieldset>
+
+            <div class="form-acoes">
+                <button class="botao botao--principal" type="submit">
+                    Validar cadastro de exemplo
+                </button>
+
+                <button class="botao botao--secundario" type="reset">
+                    Limpar formulário
+                </button>
+            </div>
+
+            <p
+                id="form-mensagem"
+                class="form-mensagem"
+                role="status"
+                aria-live="polite"
+            ></p>
+
+            <noscript>
+                <p>A validação de exemplo e a prévia exigem JavaScript.</p>
+            </noscript>
+        </form>
+    </main>
+</body>
+</html>
