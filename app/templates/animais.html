@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Animais | GAPAR Gestão</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+
+    <script
+        src="{{ url_for('static', filename='js/animais.js') }}"
+        defer
+    ></script>
+</head>
+
+<body>
+    <a class="pular-conteudo" href="#conteudo">
+        Pular para o conteúdo
+    </a>
+
+    <header class="cabecalho">
+        <div class="cabecalho__conteudo">
+            <p class="marca">GAPAR Gestão</p>
+           <nav class="menu-principal" aria-label="Menu principal">
+    <a href="{{ url_for('core.pagina_hoje') }}">
+        Hoje
+    </a>
+    <a href="{{ url_for('core.pagina_animais') }}" aria-current="page">
+        Animais
+    </a>
+</nav>
+        </div>
+    </header>
+
+    <main id="conteudo">
+        <h1>Animais acolhidos</h1>
+        <p class="descricao">Acompanhe os animais e seus cuidados.</p>
+
+        <a
+    class="botao botao--principal link-cadastro"
+    href="{{ url_for('core.novo_animal') }}"
+>
+    Cadastrar animal
+</a>
+
+        
+
+        <form class="busca" role="search" aria-label="Buscar e filtrar animais">
+            <div class="campo">
+                <label for="busca-nome">Buscar animal pelo nome</label>
+
+                <div class="busca__campos">
+                    <input
+                        type="search"
+                        id="busca-nome"
+                        name="q"
+                        placeholder="Digite o nome do animal"
+                    >
+
+                    <button class="botao botao--principal" type="submit">
+                        Buscar
+                    </button>
+                </div>
+            </div>
+
+            <div class="filtros">
+                <div class="campo">
+                    <label for="filtro-status">Situação</label>
+
+                    <select id="filtro-status" name="status">
+                        <option value="">Todas as situações</option>
+                        <option value="em acolhimento">Em acolhimento</option>
+                        <option value="em tratamento">Em tratamento</option>
+                        <option value="disponível">Disponível para adoção</option>
+                        <option value="lar temporário">Lar temporário</option>
+                        <option value="adotado">Adotado</option>
+                        <option value="óbito">Óbito</option>
+                    </select>
+                </div>
+
+                <div class="campo">
+                    <label for="filtro-porte">Porte</label>
+
+                    <select id="filtro-porte" name="porte">
+                        <option value="">Todos os portes</option>
+                        <option value="pequeno">Pequeno</option>
+                        <option value="medio">Médio</option>
+                        <option value="grande">Grande</option>
+                    </select>
+                </div>
+
+                <div class="campo">
+                    <label for="filtro-sexo">Sexo</label>
+
+                    <select id="filtro-sexo" name="sexo">
+                        <option value="">Todos</option>
+                        <option value="macho">Macho</option>
+                        <option value="femea">Fêmea</option>
+                    </select>
+                </div>
+            </div>
+
+            <fieldset class="caracteristicas">
+                <legend>Características</legend>
+
+                <div class="caracteristicas__opcoes">
+                    <label class="opcao" for="filtro-castrado">
+                        <input
+                            type="checkbox"
+                            id="filtro-castrado"
+                            name="castrado"
+                        >
+                        Somente castrados
+                    </label>
+
+                    <label class="opcao" for="filtro-idoso">
+                        <input
+                            type="checkbox"
+                            id="filtro-idoso"
+                            name="idoso"
+                        >
+                        Somente idosos
+                    </label>
+                </div>
+            </fieldset>
+
+            <button class="botao botao--secundario" type="reset">
+                Limpar filtros
+            </button>
+        </form>
+
+        <section class="animais" aria-labelledby="titulo-listagem">
+            <h2 id="titulo-listagem">Lista de animais</h2>
+
+            <p id="mensagem-busca" role="status" aria-live="polite"></p>
+
+            <noscript>
+                <p>Ative o JavaScript no navegador para utilizar os filtros.</p>
+            </noscript>
+
+                        <div class="animais__lista" id="lista-animais">
+                {% for a in animais %}
+                <article
+                    class="animal-card"
+                    data-status="{{ a.status_operacional }}"
+                    data-porte="{{ a.porte | lower }}"
+                    data-sexo="{{ a.sexo | lower }}"
+                    data-castrado="{{ 'true' if a.is_castrado else 'false' }}"
+                    data-idoso="{{ 'true' if a.is_idoso else 'false' }}"
+                >
+                    <div class="animal-card__foto">
+                        {% if a.foto_url %}
+                            <img src="{{ a.foto_url }}" alt="Foto de {{ a.nome }}" class="animal-card__imagem">
+                        {% else %}
+                            Foto não cadastrada
+                        {% endif %}
+                    </div>
+
+                    <div class="animal-card__conteudo">
+                        <h3>{{ a.nome }}</h3>
+
+                        <p class="animal-card__status status--{{ a.status_operacional | replace(' ', '-') | lower }}">
+                            {{ a.status_operacional | capitalize }}
+                        </p>
+
+                        <p>{{ a.sexo }} · Porte {{ a.porte | lower }}</p>
+
+                        <ul class="animal-card__marcadores" aria-label="Características">
+                            {% if a.is_castrado %}
+                                <li>Castrado</li>
+                            {% endif %}
+                            {% if a.is_idoso %}
+                                <li>Idoso</li>
+                            {% endif %}
+                        </ul>
+                        <a
+                            class="botao botao--secundario link-ficha"
+                            href="{{ url_for('core.ficha_animal', animal_id=a.id) }}"
+                            aria-label="Ver ficha de {{ a.nome }}"
+                        >
+                            Ver ficha
+                        </a>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+
+            <div id="estado-vazio" class="estado-vazio" hidden>
+                <h3>Tente ajustar a busca</h3>
+                <p>
+                    Confira o nome, escolha outra situação ou use
+                    “Limpar filtros” para visualizar todos os animais.
+                </p>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

@@ -1,0 +1,199 @@
+<h2>Saúde</h2>
+
+
+
+<p>Campos com * são obrigatórios.</p>
+
+<div id="saude-demo" data-animal-id="{{ animal.id }}">
+    <div class="ficha-bloco">
+        <h3>Cartão de vacinação</h3>
+
+        <details class="saude-editor">
+            <summary>Registrar vacina aplicada</summary>
+
+            <form id="form-vacina" class="saude-form">
+                <div class="form-grade">
+                    <div class="campo">
+                        <label for="vacina-nome">Nome da vacina *</label>
+                        <input
+                            id="vacina-nome"
+                            name="nome_vacina"
+                            type="text"
+                            maxlength="100"
+                            required
+                        >
+                    </div>
+
+                    <div class="campo">
+                        <label for="vacina-lote">Lote</label>
+                        <input
+                            id="vacina-lote"
+                            name="lote"
+                            type="text"
+                            maxlength="50"
+                        >
+                    </div>
+
+                    <div class="campo">
+                        <label for="vacina-data">Data da aplicação *</label>
+                        <input
+                            id="vacina-data"
+                            name="data_aplicacao"
+                            type="date"
+                            required
+                        >
+                    </div>
+
+                    <div class="campo">
+                        <label for="vacina-reforco">Data do reforço</label>
+                        <input
+                            id="vacina-reforco"
+                            name="data_reforco"
+                            type="date"
+                        >
+                    </div>
+
+                    <div class="campo campo--inteiro">
+                        <label for="vacina-observacoes">Observações</label>
+                        <textarea
+                            id="vacina-observacoes"
+                            name="observacoes"
+                            rows="3"
+                        ></textarea>
+                    </div>
+                </div>
+
+                <div class="form-acoes">
+                    <button class="botao botao--principal" type="submit">
+                        Adicionar à demonstração
+                    </button>
+
+                    <button class="botao botao--secundario" type="reset">
+                        Limpar campos
+                    </button>
+                </div>
+
+                <p
+                    id="mensagem-vacina"
+                    class="form-mensagem"
+                    role="status"
+                ></p>
+            </form>
+        </details>
+
+        <h4>Aplicações registradas nesta página</h4>
+
+        <p id="vacinas-vazio">
+            Nenhuma vacina adicionada à demonstração.
+        </p>
+
+        <div id="lista-vacinas" class="saude-registros"></div>
+    </div>
+
+    <div class="ficha-bloco">
+        <h3>Histórico médico</h3>
+
+        <details class="saude-editor">
+            <summary>Registrar atendimento realizado</summary>
+
+            <form id="form-prontuario" class="saude-form">
+                <div class="form-grade">
+                    <div class="campo">
+                        <label for="evento-tipo">Tipo de atendimento *</label>
+                        <select id="evento-tipo" name="tipo_evento" required>
+                            <option value="">Selecione</option>
+                            <option value="Consulta">Consulta</option>
+                            <option value="Exame">Exame</option>
+                            <option value="Cirurgia">Cirurgia</option>
+                            <option value="Procedimento">Procedimento</option>
+                        </select>
+                    </div>
+
+                    <div class="campo">
+                        <label for="evento-data">Data do atendimento *</label>
+                        <input
+                            id="evento-data"
+                            name="data_evento"
+                            type="date"
+                            required
+                        >
+                    </div>
+
+                    <div class="campo">
+                        <label for="evento-veterinario">
+                            Veterinário responsável
+                        </label>
+                        <input
+                            id="evento-veterinario"
+                            name="veterinario_responsavel"
+                            type="text"
+                            maxlength="120"
+                        >
+                    </div>
+
+                    <div class="campo">
+                        <label for="evento-clinica">Clínica</label>
+                        <input
+                            id="evento-clinica"
+                            name="clinica"
+                            type="text"
+                            maxlength="120"
+                        >
+                    </div>
+
+                    <div class="campo campo--inteiro">
+                        <label for="evento-diagnostico">
+                            Diagnóstico ou avaliação registrada *
+                        </label>
+                        <textarea
+                            id="evento-diagnostico"
+                            name="diagnostico"
+                            rows="4"
+                            aria-describedby="diagnostico-ajuda"
+                            required
+                        ></textarea>
+                        <p id="diagnostico-ajuda" class="ajuda">
+                            Transcreva a informação fornecida pelo veterinário.
+                        </p>
+                    </div>
+
+                    <div class="campo campo--inteiro">
+                        <label for="evento-procedimentos">
+                            Procedimentos realizados
+                        </label>
+                        <textarea
+                            id="evento-procedimentos"
+                            name="procedimentos_realizados"
+                            rows="4"
+                        ></textarea>
+                    </div>
+                </div>
+
+                <div class="form-acoes">
+                    <button class="botao botao--principal" type="submit">
+                        Adicionar à demonstração
+                    </button>
+
+                    <button class="botao botao--secundario" type="reset">
+                        Limpar campos
+                    </button>
+                </div>
+
+                <p
+                    id="mensagem-prontuario"
+                    class="form-mensagem"
+                    role="status"
+                ></p>
+            </form>
+        </details>
+
+        <h4>Atendimentos registrados nesta página</h4>
+
+        <p id="prontuario-vazio">
+            Nenhum atendimento adicionado à demonstração.
+        </p>
+
+        <div id="lista-prontuario" class="saude-registros"></div>
+            {% include "_animal_vacinas_agenda.html" %}
+    </div>
+</div>

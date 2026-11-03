@@ -7,6 +7,6 @@ migrate = Migrate()
 login_manager = LoginManager()
 
 # Configuração do Flask-Login
-login_manager.login_view = "auth.login"
+login_manager.login_view = "core.pagina_login"
 login_manager.login_message = "Por favor, faça login com sua conta Google autorizada para acessar o sistema."
 login_manager.login_message_category = "warning"

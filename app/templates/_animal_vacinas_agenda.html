@@ -1,0 +1,68 @@
+<div class="ficha-bloco">
+    <h3>Vacinações agendadas</h3>
+
+    <p>
+        Programe uma aplicação para hoje ou uma data futura.
+        Agendar não significa que a vacina foi aplicada.
+    </p>
+
+    <details class="saude-editor">
+        <summary>Agendar vacinação</summary>
+
+        <form id="form-agendamento-vacina" class="saude-form">
+            <div class="form-grade">
+                <div class="campo">
+                    <label for="agenda-vacina-nome">Nome da vacina *</label>
+                    <input
+                        id="agenda-vacina-nome"
+                        name="nome_vacina"
+                        type="text"
+                        maxlength="100"
+                        required
+                    >
+                </div>
+
+                <div class="campo">
+                    <label for="agenda-vacina-data">Data prevista *</label>
+                    <input
+                        id="agenda-vacina-data"
+                        name="data_prevista"
+                        type="date"
+                        required
+                    >
+                </div>
+
+                <div class="campo campo--inteiro">
+                    <label for="agenda-vacina-observacoes">Observações</label>
+                    <textarea
+                        id="agenda-vacina-observacoes"
+                        name="observacoes"
+                        rows="3"
+                    ></textarea>
+                </div>
+            </div>
+
+            <div class="form-acoes adocao-acoes">
+                <button class="botao botao--principal" type="submit">
+                    Agendar na demonstração
+                </button>
+
+                <button class="botao botao--secundario" type="reset">
+                    Limpar campos
+                </button>
+            </div>
+
+            <p
+                id="agenda-vacina-mensagem"
+                class="form-mensagem"
+                role="status"
+            ></p>
+        </form>
+    </details>
+
+    <p id="agenda-vacina-vazio">
+        Nenhuma vacinação agendada nesta demonstração.
+    </p>
+
+    <div id="lista-agendamentos-vacina" class="saude-registros"></div>
+</div>

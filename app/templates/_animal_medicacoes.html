@@ -1,0 +1,142 @@
+<h2>Medicações</h2>
+
+
+
+<div
+    id="medicacoes-demo"
+    data-animal-id="{{ animal.id }}"
+    data-status="{{ animal.status_operacional }}"
+>
+    {% set permite_prescricao = animal.status_operacional in [
+        "em acolhimento",
+        "em tratamento",
+        "lar temporário"
+    ] %}
+
+    {% if permite_prescricao %}
+        <details class="saude-editor">
+            <summary>Adicionar prescrição</summary>
+
+            <form id="form-prescricao" class="saude-form">
+                <p class="informacao">
+                    Transcreva a prescrição veterinária.
+                    Campos com * são obrigatórios.
+                </p>
+
+                <div class="form-grade">
+                    <div class="campo">
+                        <label for="medicamento-nome">Medicamento *</label>
+                        <input
+                            id="medicamento-nome"
+                            name="nome_medicamento"
+                            type="text"
+                            maxlength="100"
+                            required
+                        >
+                    </div>
+
+                    <div class="campo">
+                        <label for="medicamento-dose">Dosagem prescrita *</label>
+                        <input
+                            id="medicamento-dose"
+                            name="dosagem"
+                            type="text"
+                            maxlength="100"
+                            aria-describedby="dose-ajuda"
+                            required
+                        >
+                        <p id="dose-ajuda" class="ajuda">
+                            Copie a quantidade e a unidade informadas pelo veterinário.
+                        </p>
+                    </div>
+
+                    <div class="campo campo--inteiro">
+                        <label for="medicamento-horarios">
+                            Horários diários *
+                        </label>
+                        <input
+                            id="medicamento-horarios"
+                            name="horarios"
+                            type="text"
+                            maxlength="150"
+                            placeholder="08:00, 20:00"
+                            aria-describedby="horarios-ajuda"
+                            required
+                        >
+                        <p id="horarios-ajuda" class="ajuda">
+                            Use o formato de 24 horas e separe os horários
+                            por vírgula. Exemplo: 08:00, 20:00.
+                        </p>
+                    </div>
+
+                    <div class="campo">
+                        <label for="medicamento-inicio">Data inicial *</label>
+                        <input
+                            id="medicamento-inicio"
+                            name="data_inicio"
+                            type="date"
+                            required
+                        >
+                    </div>
+
+                    <div class="campo">
+                        <label for="medicamento-fim">Data final *</label>
+                        <input
+                            id="medicamento-fim"
+                            name="data_fim"
+                            type="date"
+                            required
+                        >
+                    </div>
+
+                    <div class="campo campo--inteiro">
+                        <label for="medicamento-instrucoes">
+                            Instruções da prescrição
+                        </label>
+                        <textarea
+                            id="medicamento-instrucoes"
+                            name="instrucoes"
+                            rows="4"
+                        ></textarea>
+                    </div>
+                </div>
+
+                <div class="form-acoes">
+                    <button class="botao botao--principal" type="submit">
+                        Adicionar à demonstração
+                    </button>
+
+                    <button class="botao botao--secundario" type="reset">
+                        Limpar campos
+                    </button>
+                </div>
+
+                <p
+                    id="mensagem-prescricao"
+                    class="form-mensagem"
+                    role="status"
+                ></p>
+            </form>
+        </details>
+    {% else %}
+        
+    {% endif %}
+
+    <div class="ficha-bloco">
+        <h3>Prescrições desta demonstração</h3>
+
+        <p id="prescricoes-vazio">Nenhuma prescrição adicionada.</p>
+
+        <div id="lista-prescricoes" class="saude-registros"></div>
+    </div>
+
+    <div class="ficha-bloco">
+        <h3>Aplicações registradas hoje</h3>
+
+        <p id="aplicacoes-vazio">Nenhuma aplicação registrada.</p>
+
+        <div id="lista-aplicacoes" class="saude-registros"></div>
+    </div>
+
+    <p id="mensagem-aplicacao" class="form-mensagem" role="status"></p>
+</div>

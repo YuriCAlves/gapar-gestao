@@ -1,0 +1,107 @@
+<h2>Adoção</h2>
+
+<div
+    id="adocao-demo"
+    data-animal-id="{{ animal.id }}"
+    data-status="{{ animal.status_operacional }}"
+>
+    {% if animal.status_operacional not in ["adotado", "óbito"] %}
+        <form id="form-adocao" class="saude-form">
+            <p class="informacao">
+                Adoção responsável formal com verificação de impedimentos.
+                Após a confirmação, o histórico clínico e cadastral do animal é congelado (RN05).
+                Campos com * são obrigatórios.
+            </p>
+
+            <div class="form-grade">
+                <div class="campo">
+                    <label for="adotante-nome">Nome do adotante *</label>
+                    <input
+                        id="adotante-nome"
+                        name="adotante_nome"
+                        type="text"
+                        maxlength="150"
+                        required
+                    >
+                </div>
+
+                <div class="campo">
+                    <label for="adotante-telefone">Telefone de contato *</label>
+                    <input
+                        id="adotante-telefone"
+                        name="adotante_telefone"
+                        type="tel"
+                        maxlength="30"
+                        placeholder="DDD e número"
+                        aria-describedby="telefone-ajuda"
+                        required
+                    >
+                    <p id="telefone-ajuda" class="ajuda">
+                        Informe o DDD (ex: 41 99999-9999).
+                    </p>
+                </div>
+
+                <div class="campo">
+                    <label for="adotante-cpf">CPF do adotante</label>
+                    <input
+                        id="adotante-cpf"
+                        name="adotante_cpf"
+                        type="text"
+                        maxlength="14"
+                        placeholder="000.000.000-00"
+                    >
+                </div>
+
+                <div class="campo">
+                    <label for="adocao-data">Data da adoção *</label>
+                    <input
+                        id="adocao-data"
+                        name="data_adocao"
+                        type="date"
+                        required
+                    >
+                </div>
+
+                <div class="campo campo--inteiro">
+                    <label class="opcao" for="termo-assinado">
+                        <input
+                            id="termo-assinado"
+                            name="termo_assinado"
+                            type="checkbox"
+                            checked
+                        >
+                        O termo formal de adoção e responsabilidade foi recolhido e assinado (RN04)
+                    </label>
+                </div>
+
+                <div class="campo campo--inteiro">
+                    <label for="adocao-observacoes">Observações</label>
+                    <textarea
+                        id="adocao-observacoes"
+                        name="observacoes"
+                        rows="3"
+                        placeholder="Condições do lar, acompanhamento inicial, etc."
+                    ></textarea>
+                </div>
+            </div>
+
+            <div class="form-acoes adocao-acoes">
+                <button class="botao botao--principal" type="submit">
+                    Confirmar e Registrar Adoção
+                </button>
+
+                <button class="botao botao--secundario" type="reset">
+                    Limpar campos
+                </button>
+            </div>
+        </form>
+    {% else %}
+        <p class="informacao">
+            Este animal está com a ficha encerrada para alterações cadastrais ou médicas (Status: {{ animal.status_operacional }}).
+        </p>
+    {% endif %}
+
+    <p id="adocao-mensagem" class="form-mensagem" role="status"></p>
+
+    <div id="adocao-registro" class="saude-registros"></div>
+</div>
