@@ -19,7 +19,12 @@ class Adoption(db.Model):
     
     data_adocao = db.Column(db.Date, nullable=False, default=date.today)
     termo_assinado = db.Column(db.Boolean, default=True, nullable=False)
+    termo_fisico_assinado = db.Column(db.Boolean, default=False, nullable=False)
     observacoes = db.Column(db.Text, nullable=True)
+    
+    # Rastreabilidade da autoria do registro (RF24)
+    cadastrado_por_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    cadastrado_por = db.relationship("User", foreign_keys=[cadastrado_por_user_id])
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
@@ -33,6 +38,8 @@ class Adoption(db.Model):
             "adotante_endereco": self.adotante_endereco,
             "data_adocao": self.data_adocao.isoformat() if self.data_adocao else None,
             "termo_assinado": self.termo_assinado,
+            "termo_fisico_assinado": self.termo_fisico_assinado,
             "observacoes": self.observacoes,
+            "cadastrado_por_user_id": self.cadastrado_por_user_id,
             "created_at": self.created_at.isoformat()
         }
