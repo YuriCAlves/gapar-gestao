@@ -1,6 +1,7 @@
 from datetime import datetime
 from flask_login import UserMixin
 from app.extensions import db, login_manager
+from flask import current_app
 
 
 class User(UserMixin, db.Model):
@@ -42,8 +43,32 @@ class User(UserMixin, db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    """Carrega o usuário validando se continua ativo na whitelist (RN14)."""
-    user = User.query.get(int(user_id))
-    if user and user.is_active:
+    """Carrega a usuária e revalida sua autorização em cada request."""
+    try:
+        user = db.session.get(User, int(user_id))
+    except (ValueError, TypeError):
+        return None
+
+    if not user or not user.is_active:
+        return None
+
+    admin_email = (
+        current_app.config.get("INITIAL_ADMIN_EMAIL") or ""
+    ).strip().lower()
+
+    if user.email.lower() == admin_email:
         return user
-    return None
+
+    # Importação local para evitar dependência circular.
+    from app.models.whitelist import Whitelist
+
+    authorization = Whitelist.query.filter_by(
+        email=user.email.lower(),
+        is_active=True
+    ).first()
+
+    if not authorization:
+        return None
+
+    user.role = authorization.role
+    return user
