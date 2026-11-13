@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 
 
 def test_login_bloqueado_fora_whitelist(client):
@@ -27,17 +27,17 @@ def test_desativacao_imediata_whitelist(client, volunteer_user, app):
     r2 = client.get("/auth/status")
     # status route doesn't require whitelist; use admin endpoint instead
     from app.models.blacklist import NonEligiblePerson
-    r3 = client.get("/admin/nao-aptos")
+    r3 = client.get("/api/admin/nao-aptos")
     assert r3.status_code in (401, 403)
 
 
 def test_acesso_diferenciado_admin_vs_voluntaria(client, volunteer_user, admin_user):
     client.post("/auth/google", json={"email": "vol@gapar.org.br"})
-    r = client.get("/admin/whitelist")
+    r = client.get("/api/admin/whitelist")
     assert r.status_code == 403
     # admin
     client.post("/auth/google", json={"email": "admin@gapar.org.br"})
-    r2 = client.get("/admin/whitelist")
+    r2 = client.get("/api/admin/whitelist")
     assert r2.status_code != 403
 
 
