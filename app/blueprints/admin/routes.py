@@ -1,7 +1,7 @@
 from flask import jsonify, request
 from flask_login import login_required, current_user
 from app.extensions import db
-from app.models.user import User
+from app.models.whitelist import Whitelist
 from app.models.blacklist import NonEligiblePerson
 from app.models.audit import AuditLog
 from app.utils.decorators import admin_required
@@ -12,80 +12,73 @@ from . import admin_bp
 @admin_bp.route("/whitelist", methods=["GET", "POST"])
 @admin_required
 def manage_whitelist():
-    """Gestão de usuárias autorizadas (RF04, RN12, RN14). Exclusivo da Administradora."""
+    """Gestão de e-mails autorizados (RF04, RN12, RN14). Exclusivo da Administradora."""
     if request.method == "POST":
         data = request.get_json(silent=True) or request.form.to_dict() or {}
-        email = data.get("email", "").strip().lower()
-        role = data.get("role", "Voluntaria").strip()
-        name = data.get("name", "").strip()
+        email = (data.get("email") or "").strip().lower()
+        role = (data.get("role") or "Voluntaria").strip()
 
-        if not email:
-            return jsonify({"erro": "E-mail é obrigatório."}), 400
+        if not email or "@" not in email:
+            return jsonify({"erro": "E-mail válido é obrigatório."}), 400
 
-        existente = User.query.filter(db.func.lower(User.email) == email).first()
-        if existente:
+        if Whitelist.query.filter(db.func.lower(Whitelist.email) == email).first():
             return jsonify({
                 "erro": "E-mail já cadastrado",
                 "mensagem": "Este e-mail já consta na Whitelist."
             }), 400
 
-        user = User(
+        entry = Whitelist(
             email=email,
-            name=name or email.split("@")[0].capitalize(),
             role=role if role in ("Administradora", "Voluntaria") else "Voluntaria",
             is_active=True
         )
-        db.session.add(user)
+        db.session.add(entry)
         db.session.commit()
 
         log_audit_event(
             acao="WHITELIST_USUARIA_ADICIONADA",
-            entidade="User",
-            entidade_id=user.id,
-            detalhes=f"Inclusão do e-mail {user.email} na Whitelist (Perfil: {user.role})"
+            entidade="Whitelist",
+            entidade_id=entry.id,
+            detalhes=f"Inclusão do e-mail {entry.email} na Whitelist (Perfil: {entry.role})"
         )
 
         return jsonify({
             "sucesso": True,
             "mensagem": f"E-mail {email} adicionado à Whitelist com sucesso.",
-            "usuario": user.to_dict()
+            "usuario": entry.to_dict()
         }), 201
 
-    usuarios = User.query.order_by(User.created_at.desc()).all()
+    entradas = Whitelist.query.order_by(Whitelist.created_at.desc()).all()
     return jsonify({
         "sucesso": True,
-        "total": len(usuarios),
-        "whitelist": [u.to_dict() for u in usuarios]
+        "total": len(entradas),
+        "whitelist": [e.to_dict() for e in entradas]
     }), 200
 
 
-@admin_bp.route("/whitelist/<int:user_id>/status", methods=["PATCH", "POST"])
+@admin_bp.route("/whitelist/<int:entry_id>/status", methods=["PATCH", "POST"])
 @admin_required
-def alterar_status_whitelist(user_id):
-    """Ativação ou desativação de usuária na Whitelist (RN14: efeito imediato)."""
-    user = User.query.get_or_404(user_id)
+def alterar_status_whitelist(entry_id):
+    """Ativação ou desativação na Whitelist (RN14: efeito imediato na próxima requisição)."""
+    entry = db.get_or_404(Whitelist, entry_id)
     data = request.get_json(silent=True) or request.form.to_dict() or {}
 
-    if "is_active" in data:
-        is_active = bool(data["is_active"])
-    else:
-        is_active = not user.is_active
+    is_active = bool(data["is_active"]) if "is_active" in data else not entry.is_active
 
-    user.is_active = is_active
+    entry.is_active = is_active
     db.session.commit()
 
-    acao = "USUARIA_ATIVADA" if is_active else "USUARIA_DESATIVADA_REVOGADA"
     log_audit_event(
-        acao=acao,
-        entidade="User",
-        entidade_id=user.id,
-        detalhes=f"Status da usuária {user.email} alterado para {'ativo' if is_active else 'inativo'} (RN14)"
+        acao="USUARIA_ATIVADA" if is_active else "USUARIA_DESATIVADA_REVOGADA",
+        entidade="Whitelist",
+        entidade_id=entry.id,
+        detalhes=f"Status de {entry.email} alterado para {'ativo' if is_active else 'inativo'} (RN14)"
     )
 
     return jsonify({
         "sucesso": True,
-        "mensagem": f"Status da usuária {user.email} alterado com sucesso.",
-        "usuario": user.to_dict()
+        "mensagem": f"Status de {entry.email} alterado com sucesso.",
+        "usuario": entry.to_dict()
     }), 200
 
 

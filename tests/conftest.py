@@ -3,13 +3,14 @@ import pytest
 from app import create_app
 from app.extensions import db
 from app.models.user import User
+from app.models.whitelist import Whitelist
 from app.utils.crypto import encrypt_token
 
 
 @pytest.fixture
 def app():
     os.environ["FLASK_ENV"] = "testing"
-    app = create_app("default")
+    app = create_app("testing")
     app.config.update({
         "TESTING": True,
         "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
@@ -28,25 +29,24 @@ def client(app):
     return app.test_client()
 
 
-@pytest.fixture
-def admin_user(app):
-    u = User(email="admin@gapar.org.br", name="Admin", role="Administradora", is_active=True)
+def _make_user(email, name, role, active=True):
+    db.session.add(Whitelist(email=email, role=role, is_active=active))
+    u = User(email=email, name=name, role=role, is_active=True)
     db.session.add(u)
     db.session.commit()
     return u
+
+
+@pytest.fixture
+def admin_user(app):
+    return _make_user("admin@gapar.org.br", "Admin", "Administradora")
 
 
 @pytest.fixture
 def volunteer_user(app):
-    u = User(email="vol@gapar.org.br", name="Vol", role="Voluntaria", is_active=True)
-    db.session.add(u)
-    db.session.commit()
-    return u
+    return _make_user("vol@gapar.org.br", "Vol", "Voluntaria")
 
 
 @pytest.fixture
 def inactive_user(app):
-    u = User(email="inactive@gapar.org.br", name="Inactive", role="Voluntaria", is_active=False)
-    db.session.add(u)
-    db.session.commit()
-    return u
+    return _make_user("inactive@gapar.org.br", "Inactive", "Voluntaria", active=False)

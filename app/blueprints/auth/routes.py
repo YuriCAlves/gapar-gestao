@@ -1,50 +1,204 @@
-import os
-import requests
+import secrets
 from urllib.parse import urlencode
-from flask import jsonify, request, redirect, url_for, current_app
+
+import requests
+from flask import jsonify, request, redirect, url_for, current_app, session
 from flask_login import login_user, logout_user, login_required, current_user
+from google.auth.exceptions import GoogleAuthError
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
+
 from app.extensions import db
 from app.models.user import User
+from app.models.whitelist import Whitelist
 from app.utils.audit import log_audit_event
 from . import auth_bp
 
 
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 
+
+# ---------------------------------------------------------------------------
+# Núcleo da autenticação (RF01, RF02, RN12, RN13, RN14, RNF08, RN16)
+# ---------------------------------------------------------------------------
+
+def _verify_id_token(token):
+    """Valida assinatura, emissor, validade e público do ID Token do Google.
+
+    Retorna (claims, None) ou (None, mensagem_de_erro).
+    """
+    client_id = current_app.config.get("GOOGLE_CLIENT_ID")
+    if not client_id:
+        return None, "GOOGLE_CLIENT_ID não configurado no servidor."
+    try:
+        claims = google_id_token.verify_oauth2_token(token, google_requests.Request(), client_id)
+    except (ValueError, GoogleAuthError):
+        return None, "Token Google inválido ou expirado."
+    if not claims.get("sub") or not claims.get("email") or not claims.get("email_verified"):
+        return None, "Não foi possível confirmar a identidade da conta Google."
+    return claims, None
+
+
+def _initial_admin_email():
+    return (current_app.config.get("INITIAL_ADMIN_EMAIL") or "").strip().lower()
+
+
+def _authenticate(email, name, google_id, access_token=None, refresh_token=None):
+    """Valida a Whitelist, persiste a usuária e abre a sessão.
+
+    Único ponto de entrada de login: Google (ID Token / redirecionamento) e dev-login
+    passam por aqui, então todos respeitam as mesmas regras e a mesma auditoria.
+    """
+    email = (email or "").strip().lower()
+    if not email:
+        return jsonify({"error": "E-mail não fornecido para autenticação."}), 400
+
+    is_initial_admin = email == _initial_admin_email()
+    entry = Whitelist.query.filter(db.func.lower(Whitelist.email) == email).first()
+
+    # RN12: e-mail fora da Whitelist é barrado (a administradora inicial é a exceção, RN13)
+    if not is_initial_admin and not entry:
+        log_audit_event(
+            acao="LOGIN_REJEITADO_FORA_WHITELIST",
+            entidade="Whitelist",
+            detalhes=f"Tentativa de acesso não autorizada para o e-mail: {email}",
+        )
+        return jsonify({
+            "error": "Acesso não autorizado",
+            "mensagem": "Seu e-mail não consta na Whitelist de usuárias da GAPAR (RF02, RN12). Solicite liberação à Administradora.",
+        }), 403
+
+    # RN14: cadastro desativado é rejeitado
+    if not is_initial_admin and not entry.is_active:
+        log_audit_event(
+            acao="LOGIN_REJEITADO_USUARIA_INATIVA",
+            entidade="Whitelist",
+            entidade_id=entry.id,
+            detalhes=f"Tentativa de login de usuária inativa na Whitelist: {email}",
+        )
+        return jsonify({
+            "error": "Acesso revogado",
+            "mensagem": "Seu cadastro está inativo na Whitelist da GAPAR (RN12, RN14).",
+        }), 403
+
+    role = "Administradora" if is_initial_admin else entry.role
+
+    user = User.query.filter(db.func.lower(User.email) == email).first()
+    if user:
+        # Impede que outra identidade Google assuma uma conta existente
+        if google_id and user.google_id and user.google_id != google_id:
+            log_audit_event(
+                acao="LOGIN_REJEITADO_IDENTIDADE_DIVERGENTE",
+                entidade="User",
+                entidade_id=user.id,
+                detalhes=f"Identidade Google divergente para {email}",
+                user=user,
+            )
+            return jsonify({"error": "Esta conta está vinculada a outra identidade Google."}), 403
+    else:
+        user = User(email=email)
+        db.session.add(user)
+
+    if is_initial_admin and not entry:
+        # Garante que a administradora inicial apareça na gestão da Whitelist
+        db.session.add(Whitelist(email=email, role="Administradora", is_active=True))
+
+    user.role = role
+    user.is_active = True
+    if google_id:
+        user.google_id = google_id
+    if name:
+        user.name = user.name or name
+    if access_token or refresh_token:
+        user.set_google_tokens(access_token, refresh_token)  # RNF08
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Erro ao registrar autenticação.")
+        return jsonify({"error": "Não foi possível concluir o login."}), 500
+
+    login_user(user)
+
+    log_audit_event(
+        acao="LOGIN_SUCESSO",
+        entidade="User",
+        entidade_id=user.id,
+        detalhes=f"Login realizado com sucesso (Perfil: {user.role})",
+        user=user,
+    )
+
+    return jsonify({
+        "sucesso": True,
+        "mensagem": "Autenticação realizada com sucesso.",
+        "usuario": user.to_dict(),
+    }), 200
+
+
+# ---------------------------------------------------------------------------
+# Rotas
+# ---------------------------------------------------------------------------
 
 @auth_bp.route("/status", methods=["GET"])
 def auth_status():
-    """Retorna o estado atual da autenticação da usuária."""
+    """Retorna o estado atual da autenticação."""
     if current_user.is_authenticated:
         return jsonify({
             "autenticado": True,
             "usuario": current_user.to_dict(),
             "email": current_user.email,
             "role": current_user.role,
-            "ativo": current_user.is_active
+            "ativo": current_user.is_active,
         }), 200
-    return jsonify({
-        "autenticado": False,
-        "mensagem": "Nenhuma sessão ativa."
-    }), 200
+    return jsonify({"autenticado": False, "mensagem": "Nenhuma sessão ativa."}), 200
+
+
+@auth_bp.route("/me", methods=["GET"])
+@login_required
+def current_user_info():
+    """Retorna os dados da usuária autenticada."""
+    return jsonify({"usuario": current_user.to_dict()}), 200
 
 
 @auth_bp.route("/login", methods=["GET"])
 def login_info():
-    """Instruções e URLs para login via Google OAuth 2.0 (RF01, RF02)."""
+    """Instruções para login via Google (RF01, RF02)."""
     return jsonify({
         "metodo": "Google OAuth 2.0",
         "url_autorizacao": url_for("auth.google_login", _external=True),
-        "endpoint_api_token": url_for("auth.google_token_auth", _external=True),
-        "requisito": "O e-mail deve constar previamente na Whitelist (RF02, RN12)"
+        "endpoint_id_token": url_for("auth.google_token_auth", _external=True),
+        "requisito": "O e-mail deve constar previamente na Whitelist (RF02, RN12)",
+        "dev_login": bool(current_app.config.get("DEV_LOGIN_ENABLED")),
     }), 200
+
+
+@auth_bp.route("/google", methods=["POST"])
+def google_token_auth():
+    """Login com ID Token do Google Identity Services (campo `credential` ou `id_token`)."""
+    data = request.get_json(silent=True) or {}
+    token = data.get("credential") or data.get("id_token")
+    if not token:
+        return jsonify({"error": "Token não informado."}), 400
+
+    claims, erro = _verify_id_token(token)
+    if erro:
+        status = 500 if "GOOGLE_CLIENT_ID" in erro else 401
+        return jsonify({"error": erro}), status
+
+    return _authenticate(claims["email"], claims.get("name"), claims["sub"])
 
 
 @auth_bp.route("/google", methods=["GET"])
 def google_login():
-    """Inicia o fluxo de autorização do Google OAuth 2.0 redirecionando o navegador."""
+    """Inicia o fluxo OAuth 2.0 por redirecionamento (com `state` contra CSRF)."""
     client_id = current_app.config.get("GOOGLE_CLIENT_ID")
+    if not client_id:
+        return jsonify({"error": "GOOGLE_CLIENT_ID não configurado no servidor."}), 500
+
+    state = secrets.token_urlsafe(32)
+    session["oauth_state"] = state
     redirect_uri = url_for("auth.google_callback", _external=True)
 
     params = {
@@ -53,206 +207,91 @@ def google_login():
         "response_type": "code",
         "scope": "openid email profile",
         "access_type": "offline",
-        "prompt": "consent"
+        "prompt": "consent",
+        "state": state,
     }
-    google_auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
-    
-    # Se a requisição solicitar explicitamente JSON (ex: SPA/API Client)
-    if request.is_json or request.args.get("format") == "json":
-        return jsonify({
-            "url_redirecionamento": google_auth_url,
-            "redirect_uri": redirect_uri
-        }), 200
+    google_auth_url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
 
+    if request.args.get("format") == "json":
+        return jsonify({"url_redirecionamento": google_auth_url, "redirect_uri": redirect_uri}), 200
     return redirect(google_auth_url)
 
 
 @auth_bp.route("/callback", methods=["GET"])
 def google_callback():
-    """Processa o retorno do Google OAuth 2.0, valida a Whitelist e inicia a sessão (RF01, RF02, RN12, RN14)."""
-    error = request.args.get("error")
-    if error:
-        return jsonify({
-            "error": "Falha na autorização do Google",
-            "detalhes": error
-        }), 400
+    """Conclui o fluxo por redirecionamento: troca o code, valida o ID Token e abre a sessão."""
+    expected_state = session.pop("oauth_state", None)
+    if not expected_state or request.args.get("state") != expected_state:
+        return jsonify({"error": "Estado OAuth inválido ou expirado."}), 400
+
+    if request.args.get("error"):
+        return jsonify({"error": "Falha na autorização do Google", "detalhes": request.args["error"]}), 400
 
     code = request.args.get("code")
     if not code:
         return jsonify({"error": "Código de autorização não fornecido."}), 400
 
-    client_id = current_app.config.get("GOOGLE_CLIENT_ID")
-    client_secret = current_app.config.get("GOOGLE_CLIENT_SECRET")
-    redirect_uri = url_for("auth.google_callback", _external=True)
-
-    # Troca o código pelos tokens Google
-    token_payload = {
-        "code": code,
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "redirect_uri": redirect_uri,
-        "grant_type": "authorization_code"
-    }
-
     try:
-        token_response = requests.post(GOOGLE_TOKEN_URL, data=token_payload, timeout=10)
+        token_response = requests.post(GOOGLE_TOKEN_URL, data={
+            "code": code,
+            "client_id": current_app.config.get("GOOGLE_CLIENT_ID"),
+            "client_secret": current_app.config.get("GOOGLE_CLIENT_SECRET"),
+            "redirect_uri": url_for("auth.google_callback", _external=True),
+            "grant_type": "authorization_code",
+        }, timeout=10)
         token_data = token_response.json()
-        if token_response.status_code != 200 or "access_token" not in token_data:
-            return jsonify({
-                "error": "Falha ao obter token junto ao Google",
-                "detalhes": token_data
-            }), 400
+    except (requests.RequestException, ValueError):
+        return jsonify({"error": "Erro na comunicação com a API do Google."}), 502
 
-        access_token = token_data.get("access_token")
-        refresh_token = token_data.get("refresh_token")
+    if token_response.status_code != 200 or "id_token" not in token_data:
+        return jsonify({"error": "Falha ao obter token junto ao Google."}), 400
 
-        # Busca perfil da usuária no Google
-        userinfo_resp = requests.get(
-            GOOGLE_USERINFO_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
-            timeout=10
-        )
-        if userinfo_resp.status_code != 200:
-            return jsonify({"error": "Falha ao consultar informações do perfil Google."}), 400
+    claims, erro = _verify_id_token(token_data["id_token"])
+    if erro:
+        return jsonify({"error": erro}), 401
 
-        google_profile = userinfo_resp.json()
-        email = google_profile.get("email")
-        google_id = google_profile.get("sub")
-        name = google_profile.get("name")
-
-        return _process_user_login(email, name, google_id, access_token, refresh_token)
-
-    except Exception as e:
-        return jsonify({
-            "error": "Erro na comunicação com a API do Google",
-            "detalhes": str(e)
-        }), 500
+    resp, status = _authenticate(
+        claims["email"], claims.get("name"), claims["sub"],
+        token_data.get("access_token"), token_data.get("refresh_token"),
+    )
+    if status == 200:
+        return redirect("/")
+    return resp, status
 
 
-@auth_bp.route("/google", methods=["POST"])
-def google_token_auth():
-    """Autenticação direta para clientes de API e testes via Google ID Token ou payload verificado (RF01, RF02, RN12)."""
-    data = request.get_json(silent=True) or {}
-    email = data.get("email")
-    name = data.get("name")
-    google_id = data.get("google_id")
-    id_token_str = data.get("id_token")
-    access_token = data.get("access_token")
-    refresh_token = data.get("refresh_token")
+@auth_bp.route("/dev-login", methods=["POST"])
+def dev_login():
+    """Login de desenvolvimento/testes, sem Google. Só existe quando DEV_LOGIN_ENABLED (nunca em produção)."""
+    if not current_app.config.get("DEV_LOGIN_ENABLED"):
+        return jsonify({"error": "Recurso não encontrado"}), 404
 
-    # Caso venha um ID Token real do Google Identity Services
-    if id_token_str and not email:
-        try:
-            from google.oauth2 import id_token
-            from google.auth.transport import requests as google_requests
-            client_id = current_app.config.get("GOOGLE_CLIENT_ID")
-            id_info = id_token.verify_oauth2_token(id_token_str, google_requests.Request(), client_id)
-            email = id_info.get("email")
-            name = id_info.get("name")
-            google_id = id_info.get("sub")
-        except Exception as e:
-            return jsonify({"error": "ID Token do Google inválido", "detalhes": str(e)}), 401
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    email = (data.get("email") or "").strip().lower()
 
     if not email:
-        return jsonify({"error": "E-mail não fornecido para autenticação."}), 400
+        entry = (Whitelist.query.filter_by(role="Administradora", is_active=True).first()
+                 or Whitelist.query.filter_by(is_active=True).first())
+        if not entry:
+            return jsonify({
+                "error": "Nenhum usuário ativo na Whitelist.",
+                "mensagem": "Cadastre uma usuária na Whitelist ou utilize o comando 'flask seed'.",
+            }), 400
+        email = entry.email
 
-    return _process_user_login(email, name, google_id, access_token, refresh_token)
-
-
-def _process_user_login(email, name, google_id, access_token=None, refresh_token=None):
-    """Lógica central de validação na Whitelist, persistência segura e criação de sessão (RN12, RN14, RNF08)."""
-    normalized_email = email.strip().lower()
-    user = User.query.filter(db.func.lower(User.email) == normalized_email).first()
-
-    # 1. Validação de Whitelist (RN12): Usuário inexistente é terminantemente barrado
-    if not user:
-        log_audit_event(
-            acao="LOGIN_REJEITADO_FORA_WHITELIST",
-            entidade="User",
-            detalhes=f"Tentativa de acesso não autorizada para o e-mail: {normalized_email}"
-        )
-        return jsonify({
-            "error": "Acesso não autorizado",
-            "mensagem": "Seu e-mail não consta na Whitelist de usuárias da GAPAR (RF02, RN12). Solicite liberação à Administradora."
-        }), 403
-
-    # 2. Validação de Status Ativo (RN14): Usuária desativada é rejeitada
-    if not user.is_active:
-        log_audit_event(
-            acao="LOGIN_REJEITADO_USUARIA_INATIVA",
-            entidade="User",
-            entidade_id=user.id,
-            detalhes=f"Tentativa de login de usuária inativa na Whitelist: {normalized_email}",
-            user=user
-        )
-        return jsonify({
-            "error": "Acesso revogado",
-            "mensagem": "Seu cadastro está inativo na Whitelist da GAPAR (RN12, RN14)."
-        }), 403
-
-    # 3. Atualiza dados e armazena tokens criptografados (RNF08)
-    if google_id:
-        user.google_id = google_id
-    if name and not user.name:
-        user.name = name
-    if access_token or refresh_token:
-        user.set_google_tokens(access_token, refresh_token)
-
-    db.session.commit()
-
-    # 4. Registra login na sessão Flask-Login
-    login_user(user, remember=True)
-
-    # 5. Trilha de auditoria (RF24, RN16)
-    log_audit_event(
-        acao="LOGIN_SUCESSO",
-        entidade="User",
-        entidade_id=user.id,
-        detalhes=f"Login realizado com sucesso via Google OAuth 2.0 (Perfil: {user.role})",
-        user=user
-    )
-
-    return jsonify({
-        "sucesso": True,
-        "mensagem": "Autenticação realizada com sucesso.",
-        "usuario": user.to_dict()
-    }), 200
+    return _authenticate(email, name=None, google_id=None)
 
 
 @auth_bp.route("/logout", methods=["POST"])
 @login_required
 def logout():
-    """Encerra a sessão ativa da usuária (RF01)."""
-    user_email = current_user.email
-    user_id = current_user.id
+    """Encerra a sessão ativa (RF01)."""
+    user_email, user_id = current_user.email, current_user.id
     logout_user()
 
     log_audit_event(
         acao="LOGOUT",
         entidade="User",
         entidade_id=user_id,
-        detalhes=f"Sessão encerrada pela usuária: {user_email}"
+        detalhes=f"Sessão encerrada pela usuária: {user_email}",
     )
-
     return jsonify({"sucesso": True, "mensagem": "Sessão finalizada com sucesso."}), 200
-
-
-@auth_bp.route("/dev-login", methods=["POST"])
-def dev_login():
-    """Autenticação de desenvolvimento para testes locais com a Whitelist (RN12)."""
-    data = request.get_json(silent=True) or request.form.to_dict() or {}
-    email = data.get("email", "").strip().lower()
-
-    if not email:
-        admin_user = User.query.filter_by(role="Administradora", is_active=True).first()
-        if not admin_user:
-            admin_user = User.query.filter_by(is_active=True).first()
-        if admin_user:
-            email = admin_user.email
-        else:
-            return jsonify({
-                "erro": "Nenhum usuário ativo na Whitelist.",
-                "mensagem": "Cadastre uma usuária na Whitelist ou utilize o comando 'flask seed'."
-            }), 400
-
-    return _process_user_login(email, name=None, google_id="dev-google-id")

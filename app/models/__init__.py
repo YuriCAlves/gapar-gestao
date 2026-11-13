@@ -5,6 +5,7 @@ from .adoption import Adoption
 from .blacklist import NonEligiblePerson
 from .audit import AuditLog
 from .announcement import Announcement, AnnouncementAck
+from .whitelist import Whitelist
 
 __all__ = [
     "User",

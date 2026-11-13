@@ -65,8 +65,26 @@ class User(UserMixin, db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    """Carrega o usuário validando se continua ativo na whitelist (RN14)."""
-    user = User.query.get(int(user_id))
-    if user and user.is_active:
+    """Carrega a usuária e revalida a Whitelist a cada requisição (RN12, RN14)."""
+    from flask import current_app
+    from app.models.whitelist import Whitelist
+
+    try:
+        user = db.session.get(User, int(user_id))
+    except (ValueError, TypeError):
+        return None
+
+    if not user or not user.is_active:
+        return None
+
+    email = user.email.strip().lower()
+    admin_email = (current_app.config.get("INITIAL_ADMIN_EMAIL") or "").strip().lower()
+    if admin_email and email == admin_email:
         return user
-    return None
+
+    entry = Whitelist.query.filter_by(email=email, is_active=True).first()
+    if not entry:
+        return None
+
+    user.role = entry.role  # perfil sempre sincronizado com a Whitelist
+    return user
