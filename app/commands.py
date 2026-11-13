@@ -3,11 +3,21 @@ from datetime import date, timedelta
 from flask.cli import with_appcontext
 from app.extensions import db
 from app.models.user import User
+from app.models.whitelist import Whitelist
 from app.models.animal import Animal
 from app.models.health import Vaccination, Prescription, MedicalRecord, MedicationLog
 from app.models.adoption import Adoption
 from app.models.blacklist import NonEligiblePerson
 from app.models.announcement import Announcement
+
+
+def _ensure_whitelist(email, role):
+    """Garante a entrada ativa na Whitelist (RN12), fonte de verdade da autorização."""
+    entry = Whitelist.query.filter(db.func.lower(Whitelist.email) == email.lower()).first()
+    if not entry:
+        db.session.add(Whitelist(email=email.lower(), role=role, is_active=True))
+    else:
+        entry.role, entry.is_active = role, True
 
 
 @click.command("create-admin")
@@ -16,6 +26,7 @@ def create_admin():
     """Cria a administradora mestre a partir de INITIAL_ADMIN_EMAIL (RN13, RF04)."""
     from flask import current_app
     email = current_app.config.get("INITIAL_ADMIN_EMAIL", "admin@gapar.org.br").strip().lower()
+    _ensure_whitelist(email, "Administradora")
     existing = User.query.filter(db.func.lower(User.email) == email).first()
     if existing:
         existing.role = "Administradora"
@@ -39,10 +50,11 @@ def seed_data():
     hoje = date.today()
 
     # 1. Usuárias na Whitelist (RN12, RN13)
-    admin_email = "admin@gapar.org.br"
-    admin = User.query.filter_by(email=admin_email).first()
+    from flask import current_app
+    admin_email = current_app.config.get("INITIAL_ADMIN_EMAIL", "yuricarlosfilho@gmail.com").strip().lower()
+    admin = User.query.filter(db.func.lower(User.email) == admin_email).first()
     if not admin:
-        admin = User(email=admin_email, name="Ana Silva (Diretora)", role="Administradora", is_active=True)
+        admin = User(email=admin_email, name="Administradora Mestre", role="Administradora", is_active=True)
         db.session.add(admin)
 
     volun1_email = "voluntaria1@gapar.org.br"
@@ -57,6 +69,9 @@ def seed_data():
         volun2 = User(email=volun2_email, name="Beatriz Lima", role="Voluntaria", is_active=True)
         db.session.add(volun2)
 
+    _ensure_whitelist(admin_email, "Administradora")
+    _ensure_whitelist(volun1_email, "Voluntaria")
+    _ensure_whitelist(volun2_email, "Voluntaria")
     db.session.commit()
     click.echo("✓ Usuárias da Whitelist configuradas.")
 

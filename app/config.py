@@ -17,9 +17,11 @@ def build_database_uri(default_sqlite_name: str) -> str:
         # Garante driver PyMySQL caso venha 'mysql://'
         if db_url.startswith("mysql://"):
             db_url = db_url.replace("mysql://", "mysql+pymysql://", 1)
-        # Compatibilidade com SQLAlchemy 2.x para postgres://
+        # Compatibilidade com SQLAlchemy 2.x para postgres:// ou postgresql:// garantindo psycopg2
         elif db_url.startswith("postgres://"):
-            db_url = db_url.replace("postgres://", "postgresql://", 1)
+            db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
+        elif db_url.startswith("postgresql://"):
+            db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
         return db_url
 
     # 2. Variáveis granulares de MySQL (MYSQL_HOST, MYSQL_USER, etc.)
@@ -65,10 +67,14 @@ class Config:
     # Administradora Inicial (RN13)
     INITIAL_ADMIN_EMAIL = os.getenv("INITIAL_ADMIN_EMAIL", "admin@gapar.org.br")
 
+    # Login de desenvolvimento (sem Google). Desligado por padrão; só Development/Testing ligam.
+    DEV_LOGIN_ENABLED = False
+
 
 class DevelopmentConfig(Config):
     """Ambiente de Desenvolvimento."""
     DEBUG = True
+    DEV_LOGIN_ENABLED = True
     SQLALCHEMY_DATABASE_URI = build_database_uri("gapar_dev.db")
 
 
@@ -76,6 +82,7 @@ class TestingConfig(Config):
     """Ambiente de Testes Automatizados."""
     TESTING = True
     DEBUG = True
+    DEV_LOGIN_ENABLED = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     WTF_CSRF_ENABLED = False
 
