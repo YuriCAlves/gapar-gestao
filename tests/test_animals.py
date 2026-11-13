@@ -3,7 +3,7 @@ from app.extensions import db
 from app.models.animal import Animal
 
 
-def test_cadastro_animal_em_acolhimento_rn01(client):
+def test_cadastro_animal_em_acolhimento_rn01(vol_client):
     payload = {
         "nome": "Pipoca",
         "sexo": "Fêmea",
@@ -11,7 +11,7 @@ def test_cadastro_animal_em_acolhimento_rn01(client):
         "raca": "Vira-lata",
         "is_castrado": True
     }
-    resp = client.post("/api/animais", json=payload)
+    resp = vol_client.post("/api/animais", json=payload)
     assert resp.status_code == 201
     dados = resp.get_json()
     assert dados["sucesso"] is True
@@ -21,7 +21,7 @@ def test_cadastro_animal_em_acolhimento_rn01(client):
     assert dados["animal"]["data_entrada"] == date.today().isoformat()
 
 
-def test_soft_delete_obrigatorio_rn03(client, app):
+def test_soft_delete_obrigatorio_rn03(admin_client, app):
     # Cria animal
     with app.app_context():
         a = Animal(
@@ -36,7 +36,7 @@ def test_soft_delete_obrigatorio_rn03(client, app):
         animal_id = a.id
 
     # Deleta logicamente
-    resp = client.delete(f"/api/animais/{animal_id}")
+    resp = admin_client.delete(f"/api/animais/{animal_id}")
     assert resp.status_code == 200
 
     # Verifica no banco que o registro ainda existe fisicamente com is_deleted = True (RN03)
@@ -46,12 +46,12 @@ def test_soft_delete_obrigatorio_rn03(client, app):
         assert a_banco.is_deleted is True
 
     # Não deve aparecer na listagem
-    r_list = client.get("/api/animais")
+    r_list = admin_client.get("/api/animais")
     animais = r_list.get_json()["animais"]
     assert not any(x["id"] == animal_id for x in animais)
 
 
-def test_bloqueio_edicao_animal_adotado_rn05(client, app):
+def test_bloqueio_edicao_animal_adotado_rn05(vol_client, app):
     with app.app_context():
         a = Animal(
             nome="Toby",
@@ -65,7 +65,7 @@ def test_bloqueio_edicao_animal_adotado_rn05(client, app):
         animal_id = a.id
 
     # Tenta atualizar
-    resp = client.patch(f"/api/animais/{animal_id}", json={"nome": "Novo Nome"})
+    resp = vol_client.patch(f"/api/animais/{animal_id}", json={"nome": "Novo Nome"})
     assert resp.status_code == 422
     dados = resp.get_json()
     assert "Ficha congelada" in dados["erro"]

@@ -4,7 +4,7 @@ from app.models.animal import Animal
 from app.models.health import Prescription, Vaccination
 
 
-def test_painel_hoje_consolida_doses_e_vacinas_rf23(client, app):
+def test_painel_hoje_consolida_doses_e_vacinas_rf23(vol_client, app):
     hoje = date.today()
     with app.app_context():
         # Animal em tratamento
@@ -38,7 +38,7 @@ def test_painel_hoje_consolida_doses_e_vacinas_rf23(client, app):
         db.session.add(v)
         db.session.commit()
 
-    resp = client.get("/api/hoje")
+    resp = vol_client.get("/api/hoje")
     assert resp.status_code == 200
     dados = resp.get_json()
     assert dados["kpis"]["em_tratamento"] >= 1

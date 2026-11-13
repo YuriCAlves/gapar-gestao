@@ -1,11 +1,24 @@
 from datetime import date, datetime
 from flask import jsonify, request, Response
-from flask_login import login_required, current_user
+from flask_login import current_user
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.health import Vaccination, MedicalRecord, Prescription, MedicationLog
 from app.utils.audit import log_audit_event
+from app.utils.validation import ApiError, parse_date
 from . import health_bp
+
+
+import re
+
+_HORARIO_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def _validar_horarios(horarios):
+    """Horários prescritos devem ser HH:MM separados por vírgula (ex.: '08:00, 20:00')."""
+    lista = [h.strip() for h in horarios.split(",") if h.strip()]
+    if not lista or any(not _HORARIO_RE.match(h) for h in lista):
+        raise ApiError("Horários inválidos", 400, "Use o formato HH:MM separado por vírgula, por exemplo '08:00, 20:00'.")
 
 
 @health_bp.route("/vacinas/<int:animal_id>", methods=["GET", "POST"])
@@ -21,24 +34,15 @@ def vaccines(animal_id):
             }), 422
 
         data = request.get_json(silent=True) or request.form.to_dict() or {}
-        nome_vacina = data.get("nome_vacina", "").strip()
+        nome_vacina = (data.get("nome_vacina") or "").strip()
 
         if not nome_vacina:
             return jsonify({"erro": "Nome da vacina é obrigatório."}), 400
 
-        data_aplicacao = date.today()
-        if data.get("data_aplicacao"):
-            try:
-                data_aplicacao = date.fromisoformat(data["data_aplicacao"])
-            except ValueError:
-                pass
-
-        data_reforco = None
-        if data.get("data_reforco"):
-            try:
-                data_reforco = date.fromisoformat(data["data_reforco"])
-            except ValueError:
-                pass
+        data_aplicacao = parse_date(data.get("data_aplicacao"), "data_aplicacao", default=date.today())
+        data_reforco = parse_date(data.get("data_reforco"), "data_reforco")
+        if data_reforco and data_reforco < data_aplicacao:
+            raise ApiError("Data inválida", 400, "A data de reforço não pode ser anterior à data de aplicação.")
 
         user_id = current_user.id if current_user.is_authenticated else None
 
@@ -87,18 +91,13 @@ def medical_records(animal_id):
             }), 422
 
         data = request.get_json(silent=True) or request.form.to_dict() or {}
-        diagnostico = data.get("diagnostico", "").strip()
-        tipo_evento = data.get("tipo_evento", "Consulta").strip()
+        diagnostico = (data.get("diagnostico") or "").strip()
+        tipo_evento = (data.get("tipo_evento") or "Consulta").strip()
 
         if not diagnostico:
             return jsonify({"erro": "Diagnóstico/observação é obrigatório para o prontuário."}), 400
 
-        data_evento = date.today()
-        if data.get("data_evento"):
-            try:
-                data_evento = date.fromisoformat(data["data_evento"])
-            except ValueError:
-                pass
+        data_evento = parse_date(data.get("data_evento"), "data_evento", default=date.today())
 
         user_id = current_user.id if current_user.is_authenticated else None
 
@@ -147,10 +146,14 @@ def prescriptions(animal_id):
                 "mensagem": "Não é permitido prescrever medicações para um animal com histórico congelado (RN05)."
             }), 422
 
+        if animal.status_operacional not in Animal.STATUS_PRESCREVIVEIS:
+            raise ApiError("Status não permite prescrição", 422,
+                           f"Medicações só podem ser prescritas para animais 'em acolhimento', 'em tratamento' ou 'lar temporário' (status atual: '{animal.status_operacional}') (RN08).")
+
         data = request.get_json(silent=True) or request.form.to_dict() or {}
-        nome_medicamento = data.get("nome_medicamento", "").strip()
-        dosagem = data.get("dosagem", "").strip()
-        horarios = data.get("horarios", "").strip()
+        nome_medicamento = (data.get("nome_medicamento") or "").strip()
+        dosagem = (data.get("dosagem") or "").strip()
+        horarios = (data.get("horarios") or "").strip()
 
         if not nome_medicamento or not dosagem or not horarios:
             return jsonify({
@@ -158,19 +161,11 @@ def prescriptions(animal_id):
                 "mensagem": "Nome do medicamento, dosagem e horários são obrigatórios."
             }), 400
 
-        data_inicio = date.today()
-        if data.get("data_inicio"):
-            try:
-                data_inicio = date.fromisoformat(data["data_inicio"])
-            except ValueError:
-                pass
-
-        data_fim = data_inicio
-        if data.get("data_fim"):
-            try:
-                data_fim = date.fromisoformat(data["data_fim"])
-            except ValueError:
-                pass
+        data_inicio = parse_date(data.get("data_inicio"), "data_inicio", default=date.today())
+        data_fim = parse_date(data.get("data_fim"), "data_fim", default=data_inicio)
+        if data_fim < data_inicio:
+            raise ApiError("Data inválida", 400, "A data final não pode ser anterior à data inicial da prescrição.")
+        _validar_horarios(horarios)
 
         user_id = current_user.id if current_user.is_authenticated else None
 
@@ -222,7 +217,7 @@ def log_medication_dose(prescription_id):
     """Baixa diária de medicação diretamente na API (RF16).
     Registra a aplicação e impede duplicidade de baixa no mesmo horário programado no dia.
     """
-    prescricao = Prescription.query.get_or_404(prescription_id)
+    prescricao = db.get_or_404(Prescription, prescription_id)
     animal = prescricao.animal
 
     if animal.is_frozen:
@@ -231,26 +226,32 @@ def log_medication_dose(prescription_id):
             "mensagem": "Não é permitido dar baixa em medicação de animal congelado (RN05)."
         }), 422
 
-    data = request.get_json(silent=True) or request.form.to_dict() or {}
-    horario_previsto = data.get("horario_previsto")
-    horario_aplicado = data.get("horario_aplicado") or datetime.now().strftime("%H:%M")
     hoje = date.today()
+    if not prescricao.is_active:
+        raise ApiError("Prescrição fora da validade", 422,
+                       "Esta prescrição não está vigente hoje, não é possível dar baixa (RN09).")
 
-    # Prevenção de duplicidade: checa se já houve baixa para este mesmo horário previsto hoje
-    if horario_previsto:
-        existente = MedicationLog.query.filter_by(
-            prescription_id=prescricao.id,
-            data_aplicacao=hoje,
-            horario_previsto=horario_previsto
-        ).first()
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    horarios_prescritos = [h.strip() for h in prescricao.horarios.split(",") if h.strip()]
+    horario_previsto = (data.get("horario_previsto") or "").strip()
+    if not horario_previsto and len(horarios_prescritos) == 1:
+        horario_previsto = horarios_prescritos[0]
+    if horario_previsto not in horarios_prescritos:
+        raise ApiError("Horário inválido", 400,
+                       "Informe 'horario_previsto' com um dos horários prescritos.", horarios=horarios_prescritos)
+    horario_aplicado = data.get("horario_aplicado") or datetime.now().strftime("%H:%M")
 
-        if existente:
-            return jsonify({
-                "sucesso": True,
-                "mensagem": f"A dose das {horario_previsto} já foi baixada anteriormente.",
-                "ja_baixado": True,
-                "log": existente.to_dict()
-            }), 200
+    # RF16: impede baixa duplicada do mesmo horário no mesmo dia
+    existente = MedicationLog.query.filter_by(
+        prescription_id=prescricao.id, data_aplicacao=hoje, horario_previsto=horario_previsto
+    ).first()
+    if existente:
+        return jsonify({
+            "sucesso": True,
+            "mensagem": f"A dose das {horario_previsto} já foi baixada anteriormente.",
+            "ja_baixado": True,
+            "log": existente.to_dict()
+        }), 200
 
     user_id = current_user.id if current_user.is_authenticated else None
 
