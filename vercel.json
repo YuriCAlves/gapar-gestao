@@ -1,0 +1,18 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 30,
+      "excludeFiles": "{.venv,gapar-frontend,gapar-gestao,tests,node_modules,src,instance}/**"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/auth/(.*)", "destination": "/api/index" },
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+  ]
+}
