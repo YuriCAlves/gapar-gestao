@@ -1,6 +1,5 @@
 from datetime import date, datetime
-from flask import jsonify, render_template, abort, request
-from flask_login import current_user
+from flask import jsonify
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.health import Prescription, MedicationLog, Vaccination
@@ -111,34 +110,3 @@ def today_dashboard():
         "medicacoes_hoje": medicacoes_hoje,
         "vacinas_hoje": vacinas_hoje
     }), 200
-
-
-@core_bp.route("/animais", methods=["GET"])
-def pagina_animais():
-    """Página de listagem e catálogo de animais."""
-    return render_template("animais.html")
-
-
-@core_bp.route("/animais/novo", methods=["GET"])
-def novo_animal():
-    """Página com formulário de cadastro de novo resgate."""
-    return render_template("animal_formulario.html")
-
-
-@core_bp.route("/animais/<int:animal_id>", methods=["GET"])
-def ficha_animal(animal_id):
-    """Página de ficha detalhada do animal conectada ao banco de dados."""
-    animal = Animal.query.filter_by(id=animal_id, is_deleted=False).first_or_404()
-    return render_template("animal_ficha.html", animal=animal.to_dict())
-
-
-@core_bp.route("/hoje", methods=["GET"])
-def pagina_hoje():
-    """Painel operacional Hoje."""
-    return render_template("hoje.html")
-
-
-@core_bp.route("/entrar", methods=["GET"])
-def pagina_login():
-    """Página de login."""
-    return render_template("login.html")

@@ -1,12 +1,13 @@
 import re
 from datetime import date
 from flask import jsonify, request
-from flask_login import login_required, current_user
+from flask_login import current_user
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.adoption import Adoption
 from app.models.blacklist import NonEligiblePerson
 from app.utils.audit import log_audit_event
+from app.utils.validation import ApiError, parse_date
 from . import adoptions_bp
 
 
@@ -26,33 +27,27 @@ def register_adoption(animal_id):
     animal = Animal.query.filter_by(id=animal_id, is_deleted=False).first_or_404()
 
     if animal.status_operacional == Animal.STATUS_ADOTADO:
-        return jsonify({
-            "erro": "Animal já adotado",
-            "mensagem": "Este animal já possui registro de adoção formalizado."
-        }), 400
+        raise ApiError("Animal já adotado", 400, "Este animal já possui registro de adoção formalizado.")
+
+    if animal.status_operacional not in Animal.STATUS_ADOTAVEIS:
+        raise ApiError("Animal não disponível para adoção", 422,
+                       f"Só é possível adotar animais 'disponível' ou em 'lar temporário' (status atual: '{animal.status_operacional}').")
 
     data = request.get_json(silent=True) or request.form.to_dict() or {}
 
-    adotante_nome = data.get("adotante_nome", "").strip()
-    adotante_telefone = data.get("adotante_telefone", "").strip()
-    adotante_cpf = data.get("adotante_cpf", "").strip()
-    adotante_endereco = data.get("adotante_endereco", "").strip()
-    observacoes = data.get("observacoes", "").strip()
+    adotante_nome = (data.get("adotante_nome") or "").strip()
+    adotante_telefone = (data.get("adotante_telefone") or "").strip()
+    adotante_cpf = (data.get("adotante_cpf") or "").strip()
+    adotante_endereco = (data.get("adotante_endereco") or "").strip()
+    observacoes = (data.get("observacoes") or "").strip()
     termo_fisico = bool(data.get("termo_fisico_assinado") or data.get("termo_assinado"))
 
     # Validação RN04: Exigência obrigatória de nome, telefone e data
     if not adotante_nome or not adotante_telefone:
-        return jsonify({
-            "erro": "Campos obrigatórios ausentes",
-            "mensagem": "Nome e telefone/contato do adotante são estritamente obrigatórios (RN04)."
-        }), 400
+        raise ApiError("Campos obrigatórios ausentes", 400,
+                       "Nome e telefone/contato do adotante são estritamente obrigatórios (RN04).")
 
-    data_adocao = date.today()
-    if data.get("data_adocao"):
-        try:
-            data_adocao = date.fromisoformat(data["data_adocao"])
-        except ValueError:
-            pass
+    data_adocao = parse_date(data.get("data_adocao"), "data_adocao", default=date.today())
 
     # Validação RN15: Checagem contra a Lista Sigilosa de Não Aptos
     cpf_limpo = _limpar_numeros(adotante_cpf)
@@ -84,10 +79,8 @@ def register_adoption(animal_id):
             entidade_id=animal.id,
             detalhes=f"Tentativa de adoção do cão {animal.nome} bloqueada para '{adotante_nome}'. Motivo: {motivo_bloqueio} (RN15)"
         )
-        return jsonify({
-            "erro": "Adoção não autorizada",
-            "mensagem": "Não é possível prosseguir com o registro de adoção para este interessado. Por favor, verifique com a Administradora da ONG (RN15)."
-        }), 422
+        raise ApiError("Adoção não autorizada", 422,
+                       "Não é possível prosseguir com o registro de adoção para este interessado. Por favor, verifique com a Administradora da ONG (RN15).")
 
     user_id = current_user.id if current_user.is_authenticated else None
 

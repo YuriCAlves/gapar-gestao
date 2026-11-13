@@ -23,6 +23,14 @@ class Animal(db.Model):
         STATUS_OBITO,
     ]
 
+    SEXOS = ["Macho", "Fêmea"]
+    PORTES = ["Pequeno", "Médio", "Grande"]
+
+    # Status em que o animal está sob cuidados e pode receber prescrições (RN08)
+    STATUS_PRESCREVIVEIS = [STATUS_ACOLHIMENTO, STATUS_TRATAMENTO, STATUS_LAR_TEMPORARIO]
+    # Status dos quais é possível formalizar a adoção (RF20, RN04, RN07)
+    STATUS_ADOTAVEIS = [STATUS_DISPONIVEL, STATUS_LAR_TEMPORARIO]
+
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False, index=True)
     idade_estimada = db.Column(db.String(50), nullable=True)
@@ -69,6 +77,20 @@ class Animal(db.Model):
     medical_records = db.relationship("MedicalRecord", backref="animal", lazy="dynamic", cascade="all, delete-orphan")
     prescriptions = db.relationship("Prescription", backref="animal", lazy="dynamic", cascade="all, delete-orphan")
     adoption = db.relationship("Adoption", backref="animal", uselist=False, cascade="all, delete-orphan")
+
+    @classmethod
+    def can_transition(cls, atual, novo):
+        """Máquina de estados (RN02).
+
+        Entre os status ativos qualquer troca é permitida, e 'óbito' é possível a partir de qualquer
+        um deles. 'adotado' só é alcançado pelo registro formal de adoção (RN04), e 'adotado' e
+        'óbito' são finais (RN05).
+        """
+        if atual in (cls.STATUS_ADOTADO, cls.STATUS_OBITO) or novo == atual:
+            return False
+        if novo == cls.STATUS_ADOTADO:
+            return False
+        return novo in cls.VALID_STATUSES
 
     @property
     def is_frozen(self):

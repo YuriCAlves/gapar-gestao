@@ -4,7 +4,7 @@ from app.models.animal import Animal
 from app.models.blacklist import NonEligiblePerson
 
 
-def test_adocao_sucesso_e_congelamento_rn04_rn05(client, app):
+def test_adocao_sucesso_e_congelamento_rn04_rn05(vol_client, app):
     with app.app_context():
         animal = Animal(
             nome="Max",
@@ -18,7 +18,7 @@ def test_adocao_sucesso_e_congelamento_rn04_rn05(client, app):
         animal_id = animal.id
 
     # 1. Tenta adoção sem campos obrigatórios (RN04)
-    r_invalido = client.post(f"/api/adocoes/{animal_id}", json={"adotante_nome": "Carlos"})
+    r_invalido = vol_client.post(f"/api/adocoes/{animal_id}", json={"adotante_nome": "Carlos"})
     assert r_invalido.status_code == 400
 
     # 2. Adoção regular completa
@@ -29,7 +29,7 @@ def test_adocao_sucesso_e_congelamento_rn04_rn05(client, app):
         "data_adocao": date.today().isoformat(),
         "termo_assinado": True
     }
-    resp = client.post(f"/api/adocoes/{animal_id}", json=payload)
+    resp = vol_client.post(f"/api/adocoes/{animal_id}", json=payload)
     assert resp.status_code == 201
     dados = resp.get_json()
     assert dados["sucesso"] is True
@@ -41,7 +41,7 @@ def test_adocao_sucesso_e_congelamento_rn04_rn05(client, app):
         assert a.is_frozen is True
 
 
-def test_bloqueio_adocao_pessoa_nao_apta_rn15(client, app):
+def test_bloqueio_adocao_pessoa_nao_apta_rn15(vol_client, app):
     with app.app_context():
         # Cria pessoa na lista sigilosa
         bloqueado = NonEligiblePerson(
@@ -70,7 +70,7 @@ def test_bloqueio_adocao_pessoa_nao_apta_rn15(client, app):
         "adotante_cpf": "999.888.777-66",
         "data_adocao": date.today().isoformat()
     }
-    resp = client.post(f"/api/adocoes/{animal_id}", json=payload)
+    resp = vol_client.post(f"/api/adocoes/{animal_id}", json=payload)
     assert resp.status_code == 422
     dados = resp.get_json()
     assert "Adoção não autorizada" in dados["erro"]

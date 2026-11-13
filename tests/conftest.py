@@ -50,3 +50,22 @@ def volunteer_user(app):
 @pytest.fixture
 def inactive_user(app):
     return _make_user("inactive@gapar.org.br", "Inactive", "Voluntaria", active=False)
+
+
+def _logged_client(app, email, name, role):
+    _make_user(email, name, role)
+    c = app.test_client()
+    assert c.post("/auth/dev-login", json={"email": email}).status_code == 200
+    return c
+
+
+@pytest.fixture
+def vol_client(app):
+    """Cliente autenticado como Voluntária."""
+    return _logged_client(app, "vol@gapar.org.br", "Vol", "Voluntaria")
+
+
+@pytest.fixture
+def admin_client(app):
+    """Cliente autenticado como Administradora."""
+    return _logged_client(app, "admin@gapar.org.br", "Admin", "Administradora")

@@ -4,7 +4,7 @@ from app.models.animal import Animal
 from app.models.health import Prescription, Vaccination, MedicationLog
 
 
-def test_baixa_medicacao_e_prevencao_duplicidade_rf16(client, app):
+def test_baixa_medicacao_e_prevencao_duplicidade_rf16(vol_client, app):
     hoje = date.today()
     with app.app_context():
         animal = Animal(
@@ -30,20 +30,20 @@ def test_baixa_medicacao_e_prevencao_duplicidade_rf16(client, app):
         p_id = prescricao.id
 
     # Dá baixa na dose das 08:00
-    resp = client.post(f"/api/saude/medicacao/baixa/{p_id}", json={"horario_previsto": "08:00"})
+    resp = vol_client.post(f"/api/saude/medicacao/baixa/{p_id}", json={"horario_previsto": "08:00"})
     assert resp.status_code == 200
     dados = resp.get_json()
     assert dados["sucesso"] is True
     assert dados["log"]["horario_previsto"] == "08:00"
 
     # Tenta dar baixa novamente no mesmo horário (deve acusar que já foi baixado)
-    resp2 = client.post(f"/api/saude/medicacao/baixa/{p_id}", json={"horario_previsto": "08:00"})
+    resp2 = vol_client.post(f"/api/saude/medicacao/baixa/{p_id}", json={"horario_previsto": "08:00"})
     assert resp2.status_code == 200
     dados2 = resp2.get_json()
     assert dados2["ja_baixado"] is True
 
 
-def test_vacina_reforco_e_bloqueio_apos_congelamento(client, app):
+def test_vacina_reforco_e_bloqueio_apos_congelamento(vol_client, app):
     hoje = date.today()
     with app.app_context():
         animal = Animal(
@@ -64,15 +64,16 @@ def test_vacina_reforco_e_bloqueio_apos_congelamento(client, app):
         "data_aplicacao": hoje.isoformat(),
         "data_reforco": (hoje + timedelta(days=30)).isoformat()
     }
-    r = client.post(f"/api/saude/vacinas/{animal_id}", json=payload)
+    r = vol_client.post(f"/api/saude/vacinas/{animal_id}", json=payload)
     assert r.status_code == 201
 
-    # Altera status para adotado via API oficial
-    r_status = client.patch(f"/api/animais/{animal_id}/status", json={"status_operacional": "adotado"})
-    assert r_status.status_code == 200
+    # Disponibiliza e adota pelo fluxo oficial (RN02, RN04)
+    assert vol_client.patch(f"/api/animais/{animal_id}/status", json={"status_operacional": "disponível"}).status_code == 200
+    r_adocao = vol_client.post(f"/api/adocoes/{animal_id}", json={"adotante_nome": "Ana", "adotante_telefone": "41999990000"})
+    assert r_adocao.status_code == 201
 
     # Nova tentativa de vacina deve ser bloqueada (RN05)
-    r2 = client.post(f"/api/saude/vacinas/{animal_id}", json=payload)
+    r2 = vol_client.post(f"/api/saude/vacinas/{animal_id}", json=payload)
     assert r2.status_code == 422
     dados_erro = r2.get_json()
     assert "Ficha congelada" in dados_erro["erro"]

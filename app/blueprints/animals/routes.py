@@ -1,11 +1,12 @@
 from datetime import date
 from flask import jsonify, request, current_app
-from flask_login import login_required, current_user
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.health import Vaccination, Prescription, MedicalRecord
 from app.utils.images import compress_and_save_photo
 from app.utils.audit import log_audit_event
+from app.utils.decorators import admin_required
+from app.utils.validation import ApiError, parse_bool, parse_float, require_choice
 from . import animals_bp
 
 
@@ -13,8 +14,8 @@ from . import animals_bp
 @animals_bp.route("/", methods=["GET"])
 def list_animals():
     """Listagem de animais com busca e filtros dinâmicos (RF10, RF11, RNF03)."""
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 20, type=int)
+    page = max(request.args.get("page", 1, type=int) or 1, 1)
+    per_page = min(max(request.args.get("per_page", 20, type=int) or 20, 1), 100)
     search_query = request.args.get("q", "").strip() or request.args.get("busca", "").strip()
     status_filter = request.args.get("status", "").strip()
     porte_filter = request.args.get("porte", "").strip()
@@ -79,41 +80,21 @@ def create_animal():
     Estado inicial obrigatório: 'em acolhimento' e data de entrada do dia.
     Suporta JSON ou multipart/form-data com upload de foto.
     """
-    if request.is_json:
-        data = request.get_json() or {}
-    else:
-        data = request.form.to_dict()
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
 
-    nome = data.get("nome", "").strip()
-    sexo = data.get("sexo", "").strip()
-    porte = data.get("porte", "Médio").strip()
+    nome = (data.get("nome") or "").strip()
+    sexo = (data.get("sexo") or "").strip()
+    porte = (data.get("porte") or "Médio").strip()
 
     if not nome or not sexo:
-        return jsonify({
-            "erro": "Dados incompletos",
-            "mensagem": "Nome e sexo são campos obrigatórios para o cadastro."
-        }), 400
+        raise ApiError("Dados incompletos", 400, "Nome e sexo são campos obrigatórios para o cadastro.")
+    require_choice(sexo, "sexo", Animal.SEXOS)
+    require_choice(porte, "porte", Animal.PORTES)
+    peso_val = parse_float(data.get("peso_kg"), "peso_kg", minimo=0)
 
-    # Processamento e compressão de foto se enviada (< 300KB via Pillow)
     foto_url = data.get("foto_url")
     if "foto" in request.files:
-        uploaded_file = request.files["foto"]
-        compressed_url = compress_and_save_photo(uploaded_file)
-        if compressed_url:
-            foto_url = compressed_url
-
-    # Parsing de flags booleanas
-    def parse_bool(val):
-        if isinstance(val, bool):
-            return val
-        return str(val).strip().lower() in ("true", "1", "sim", "on", "yes")
-
-    peso_val = None
-    if data.get("peso_kg"):
-        try:
-            peso_val = float(str(data.get("peso_kg")).replace(",", "."))
-        except ValueError:
-            pass
+        foto_url = compress_and_save_photo(request.files["foto"]) or foto_url
 
     # Criação da entidade garantindo RN01 (status inicial 'em acolhimento' e data de hoje)
     animal = Animal(
@@ -188,38 +169,31 @@ def update_animal(animal_id):
             "mensagem": f"O animal encontra-se com status '{animal.status_operacional}'. Cadastros e fichas de animais adotados ou com óbito são estritamente congelados para alterações (RN05)."
         }), 422
 
-    if request.is_json:
-        data = request.get_json() or {}
-    else:
-        data = request.form.to_dict()
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
 
-    # Atualiza campos cadastrais permitidos
-    for field in ["nome", "idade_estimada", "sexo", "raca", "porte", "pelagem", 
-                  "local_resgate", "motivo_resgate", "cuidados_especiais", 
+    if "nome" in data and not str(data["nome"]).strip():
+        raise ApiError("Dados incompletos", 400, "O nome do animal não pode ficar vazio.")
+    if "sexo" in data:
+        require_choice(data["sexo"], "sexo", Animal.SEXOS)
+    if "porte" in data:
+        require_choice(data["porte"], "porte", Animal.PORTES)
+    peso = parse_float(data["peso_kg"], "peso_kg", minimo=0) if "peso_kg" in data else None
+
+    for field in ["nome", "idade_estimada", "sexo", "raca", "porte", "pelagem",
+                  "local_resgate", "motivo_resgate", "cuidados_especiais",
                   "localizacao_baia", "codigo_identificador"]:
         if field in data:
             setattr(animal, field, data[field])
 
     if "peso_kg" in data:
-        try:
-            animal.peso_kg = float(str(data["peso_kg"]).replace(",", ".")) if data["peso_kg"] else None
-        except ValueError:
-            pass
-
-    def parse_bool(val):
-        if isinstance(val, bool):
-            return val
-        return str(val).strip().lower() in ("true", "1", "sim", "on", "yes")
+        animal.peso_kg = peso
 
     for bool_field in ["is_castrado", "is_microchipado", "is_idoso"]:
         if bool_field in data:
             setattr(animal, bool_field, parse_bool(data[bool_field]))
 
     if "foto" in request.files:
-        uploaded_file = request.files["foto"]
-        compressed_url = compress_and_save_photo(uploaded_file)
-        if compressed_url:
-            animal.foto_url = compressed_url
+        animal.foto_url = compress_and_save_photo(request.files["foto"]) or animal.foto_url
     elif "foto_url" in data:
         animal.foto_url = data["foto_url"]
 
@@ -246,11 +220,20 @@ def update_animal_status(animal_id):
     data = request.get_json(silent=True) or {}
     novo_status = data.get("status_operacional")
 
-    if not novo_status or novo_status not in Animal.VALID_STATUSES:
-        return jsonify({
-            "erro": "Status inválido",
-            "status_permitidos": Animal.VALID_STATUSES
-        }), 400
+    if novo_status not in Animal.VALID_STATUSES:
+        raise ApiError("Status inválido", 400, "Informe um status operacional válido.", status_permitidos=Animal.VALID_STATUSES)
+
+    if animal.is_frozen:
+        raise ApiError("Ficha congelada", 422,
+                       f"Animais com status '{animal.status_operacional}' não podem mudar de situação (RN05).")
+
+    if novo_status == Animal.STATUS_ADOTADO:
+        raise ApiError("Adoção exige registro formal", 422,
+                       "Para marcar como adotado, registre a adoção com nome, telefone e data do adotante (RN04, RF20).")
+
+    if not Animal.can_transition(animal.status_operacional, novo_status):
+        raise ApiError("Transição de status inválida", 422,
+                       f"Não é possível mudar de '{animal.status_operacional}' para '{novo_status}' (RN02).")
 
     status_anterior = animal.status_operacional
     animal.status_operacional = novo_status
@@ -271,9 +254,14 @@ def update_animal_status(animal_id):
 
 
 @animals_bp.route("/<int:animal_id>", methods=["DELETE"])
+@admin_required
 def delete_animal(animal_id):
-    """Exclusão lógica de registro de animal (RN03). Proibida exclusão física."""
+    """Exclusão lógica de registro de animal (RN03). Exclusiva da Administradora; proibida exclusão física."""
     animal = Animal.query.filter_by(id=animal_id, is_deleted=False).first_or_404()
+
+    if animal.is_frozen:
+        raise ApiError("Ficha congelada", 422,
+                       "O histórico de animais adotados ou com óbito é preservado indefinidamente (RN05, RN06).")
 
     animal.is_deleted = True # RN03: Soft Delete
     db.session.commit()
@@ -298,14 +286,15 @@ def upload_photo(animal_id):
     """
     animal = Animal.query.filter_by(id=animal_id, is_deleted=False).first_or_404()
 
+    if animal.is_frozen:
+        raise ApiError("Ficha congelada", 422, "Não é possível alterar a foto de um animal com ficha congelada (RN05).")
+
     if "foto" not in request.files:
-        return jsonify({"erro": "Nenhum arquivo enviado com a chave 'foto'."}), 400
+        raise ApiError("Arquivo ausente", 400, "Envie a imagem no campo 'foto'.")
 
-    uploaded_file = request.files["foto"]
-    compressed_url = compress_and_save_photo(uploaded_file)
-
+    compressed_url = compress_and_save_photo(request.files["foto"])
     if not compressed_url:
-        return jsonify({"erro": "Não foi possível processar a imagem fornecida."}), 400
+        raise ApiError("Imagem inválida", 400, "Não foi possível processar a imagem fornecida.")
 
     animal.foto_url = compressed_url
     db.session.commit()
