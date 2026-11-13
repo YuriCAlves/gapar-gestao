@@ -55,3 +55,10 @@ app/static/uploads/*
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Clones antigos (front/back separados) - unificados na raiz
+gapar-frontend/
+gapar-gestao/
+.vercel
+node_modules/
+dist/
