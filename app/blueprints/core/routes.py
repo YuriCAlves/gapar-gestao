@@ -116,8 +116,7 @@ def today_dashboard():
 @core_bp.route("/animais", methods=["GET"])
 def pagina_animais():
     """Página de listagem e catálogo de animais."""
-    animais = Animal.query.filter_by(is_deleted=False).order_by(Animal.created_at.desc()).all()
-    return render_template("animais.html", animais=[a.to_dict() for a in animais])
+    return render_template("animais.html")
 
 
 @core_bp.route("/animais/novo", methods=["GET"])
