@@ -1,5 +1,5 @@
-from datetime import datetime
 from app.extensions import db
+from .base import utcnow
 
 
 class Announcement(db.Model):
@@ -14,10 +14,10 @@ class Announcement(db.Model):
     is_urgente = db.Column(db.Boolean, default=False, nullable=False)
     is_fixado = db.Column(db.Boolean, default=False, nullable=False)
 
-    autor_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    animal_id = db.Column(db.Integer, db.ForeignKey("animals.id", ondelete="SET NULL"), nullable=True)
+    autor_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    animal_id = db.Column(db.Integer, db.ForeignKey("animals.id", ondelete="SET NULL"), nullable=True, index=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)
 
     acks = db.relationship("AnnouncementAck", backref="announcement", lazy="dynamic", cascade="all, delete-orphan")
 
@@ -39,12 +39,16 @@ class Announcement(db.Model):
 class AnnouncementAck(db.Model):
     """Confirmações de presença em convocações ou ciência em comunicados."""
     __tablename__ = "announcement_acks"
+    __table_args__ = (
+        # Cada usuária confirma um aviso uma única vez (o índice da UNIQUE cobre a FK announcement_id)
+        db.UniqueConstraint("announcement_id", "user_id", name="uq_announcement_acks_aviso_usuaria"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     announcement_id = db.Column(db.Integer, db.ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     tipo_confirmacao = db.Column(db.String(20), default="CIENTE")
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     def to_dict(self):
         return {

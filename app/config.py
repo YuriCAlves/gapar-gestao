@@ -67,8 +67,22 @@ class Config:
     # Administradora Inicial (RN13)
     INITIAL_ADMIN_EMAIL = os.getenv("INITIAL_ADMIN_EMAIL", "admin@gapar.org.br")
 
+    # Cookie de sessão: inacessível a scripts e não enviado em requisições vindas de outros sites
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+
     # Login de desenvolvimento (sem Google). Desligado por padrão; só Development/Testing ligam.
     DEV_LOGIN_ENABLED = False
+
+    # Fuso do abrigo: define o "dia atual" do painel Hoje, das prescrições e das baixas.
+    # O servidor de produção roda em UTC; vazio = usar o relógio do servidor.
+    APP_TIMEZONE = os.getenv("APP_TIMEZONE", "America/Sao_Paulo")
+
+    # Fotos dos animais no Supabase Storage (RF06). Sem URL + chave de serviço, as fotos
+    # ficam no disco local (UPLOAD_FOLDER). A chave de serviço nunca vai para o navegador.
+    SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+    SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "animais")
 
 
 class DevelopmentConfig(Config):
@@ -85,6 +99,10 @@ class TestingConfig(Config):
     DEV_LOGIN_ENABLED = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     WTF_CSRF_ENABLED = False
+    # Os testes usam o relógio da máquina e nunca falam com o Supabase, mesmo que o .env tenha a chave.
+    APP_TIMEZONE = ""
+    SUPABASE_URL = ""
+    SUPABASE_SERVICE_ROLE_KEY = ""
 
 
 class ProductionConfig(Config):

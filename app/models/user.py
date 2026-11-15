@@ -1,11 +1,14 @@
-from datetime import datetime
 from flask_login import UserMixin
 from app.extensions import db, login_manager
+from .base import utcnow, sql_in, PERFIS
 
 
 class User(UserMixin, db.Model):
     """Modelo de Usuária e controle de Whitelist (RF01, RF02, RF03, RF04, RN12, RN14)."""
     __tablename__ = "users"
+    __table_args__ = (
+        db.CheckConstraint(sql_in("role", PERFIS), name="ck_users_role"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
@@ -22,8 +25,8 @@ class User(UserMixin, db.Model):
     google_access_token = db.Column(db.Text, nullable=True)
     google_refresh_token = db.Column(db.Text, nullable=True)
     
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
     @property
     def is_admin(self):

@@ -145,3 +145,17 @@ def test_criptografia_tokens_google(app, volunteer_user):
     ).scalar()
     assert raw != "access123"
     assert u.get_decrypted_access_token() == "access123"
+
+
+# --- Fluxo por redirecionamento (aberto pelo navegador) ----------------------
+
+def test_callback_com_state_invalido_volta_para_login(client):
+    resp = client.get("/auth/callback?state=forjado&code=x")
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/entrar?erro=google")
+
+
+def test_login_info_informa_opcoes(client, app):
+    app.config.update(GOOGLE_CLIENT_ID="cid", GOOGLE_CLIENT_SECRET="segredo")
+    corpo = client.get("/auth/login").get_json()
+    assert corpo["dev_login"] is True and corpo["google_configurado"] is True

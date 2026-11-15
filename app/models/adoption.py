@@ -1,5 +1,6 @@
-from datetime import datetime, date
+from datetime import date
 from app.extensions import db
+from .base import utcnow
 
 
 class Adoption(db.Model):
@@ -23,10 +24,10 @@ class Adoption(db.Model):
     observacoes = db.Column(db.Text, nullable=True)
     
     # Rastreabilidade da autoria do registro (RF24)
-    cadastrado_por_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    cadastrado_por_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     cadastrado_por = db.relationship("User", foreign_keys=[cadastrado_por_user_id])
     
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     def to_dict(self):
         return {
