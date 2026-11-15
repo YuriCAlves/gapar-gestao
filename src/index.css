@@ -1,1 +1,164 @@
 @import "tailwindcss";
+@import "@fontsource-variable/nunito/wght.css";
+
+/*
+  Identidade visual do GAPAR Gestão.
+  Verde-mata (cuidado, calma) sobre creme quente (acolhimento), com terracota para o que
+  pede atenção. Todas as combinações de texto e fundo usadas no app passam de 4.5:1 (RNF12);
+  os pares estão conferidos em src/utils/utils.test.ts.
+*/
+@theme {
+  --font-sans: "Nunito Variable", ui-rounded, "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  /* Neutros quentes */
+  --color-creme-50: #fbf7f0;
+  --color-creme-100: #f4ede1;
+  --color-creme-200: #e8decd;
+  --color-creme-300: #d6c9b3;
+  --color-contorno: #7b8279;
+
+  /* Texto */
+  --color-tinta-900: #1f2a24;
+  --color-tinta-700: #3d4a43;
+  --color-tinta-500: #56625b;
+
+  /* Verde-mata: cor principal */
+  --color-mata-50: #ecf5ee;
+  --color-mata-100: #d6ead9;
+  --color-mata-200: #b0d4b7;
+  --color-mata-600: #2a7048;
+  --color-mata-700: #1f5c3a;
+  --color-mata-800: #184a2e;
+  --color-mata-900: #123823;
+
+  /* Terracota: destaque e atenção */
+  --color-barro-50: #fcf0e8;
+  --color-barro-100: #f8dfcf;
+  --color-barro-200: #f0c3a8;
+  --color-barro-600: #b0522b;
+  --color-barro-700: #94421f;
+  --color-barro-900: #6b2c12;
+
+  /* Apoio para situações e avisos */
+  --color-ambar-50: #fdf4d9;
+  --color-ambar-100: #f9e7b0;
+  --color-ambar-900: #5e4200;
+  --color-ceu-50: #e8f0f9;
+  --color-ceu-100: #d3e2f4;
+  --color-ceu-900: #1f4470;
+  --color-lilas-50: #f1eaf7;
+  --color-lilas-100: #e3d6f0;
+  --color-lilas-900: #4d3470;
+  --color-pedra-100: #e9e6e1;
+  --color-pedra-200: #d9d5ce;
+  --color-pedra-900: #403d39;
+
+  /* Perigo: ações que não têm volta */
+  --color-perigo-50: #fdecea;
+  --color-perigo-100: #f9d4d0;
+  --color-perigo-600: #b3261e;
+  --color-perigo-700: #8f1d17;
+  --color-perigo-900: #6e1511;
+
+  --shadow-cartao: 0 1px 2px rgb(31 42 36 / 0.06), 0 2px 8px rgb(31 42 36 / 0.05);
+  --shadow-flutuante: 0 8px 28px rgb(31 42 36 / 0.18);
+
+  --radius-cartao: 1.125rem;
+
+  --animate-entrar: entrar 0.18s ease-out;
+  --animate-subir: subir 0.22s ease-out;
+  --animate-pulsar: pulsar 1.4s ease-in-out infinite;
+
+  @keyframes entrar {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes subir {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulsar {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+}
+
+@layer base {
+  html {
+    font-size: 100%; /* respeita o tamanho de letra escolhido no aparelho */
+    -webkit-text-size-adjust: 100%;
+    scroll-padding-top: 5rem;
+  }
+
+  body {
+    min-width: 320px;
+    background-color: var(--color-creme-50);
+    color: var(--color-tinta-700);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4 {
+    color: var(--color-tinta-900);
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  /* Foco sempre visível, em terracota para se destacar do verde e do creme */
+  :focus-visible {
+    outline: 3px solid var(--color-barro-600);
+    outline-offset: 2px;
+    border-radius: 0.375rem;
+  }
+
+  button, [role="tab"], a, summary, label {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:not(:disabled), summary, [role="tab"] {
+    cursor: pointer;
+  }
+
+  /* iOS amplia a tela ao focar campos com letra menor que 16px: mantemos 16px sempre */
+  input, select, textarea {
+    font-size: 1rem;
+  }
+
+  dialog {
+    color: inherit;
+  }
+
+  dialog::backdrop {
+    background: rgb(31 42 36 / 0.55);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Espaço para a barra de navegação inferior e para a área segura dos celulares */
+  .pb-barra {
+    padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+  }
+  .pb-segura {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+  .rolagem-sem-barra {
+    scrollbar-width: none;
+  }
+  .rolagem-sem-barra::-webkit-scrollbar {
+    display: none;
+  }
+}
