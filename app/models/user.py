@@ -77,7 +77,11 @@ def load_user(user_id):
     except (ValueError, TypeError):
         return None
 
-    if not user or not user.is_active:
+    if not user:
+        return None
+    if not user.is_active:
+        from flask import g
+        g.acesso_revogado = True
         return None
 
     email = user.email.strip().lower()
@@ -87,6 +91,10 @@ def load_user(user_id):
 
     entry = Whitelist.query.filter_by(email=email, is_active=True).first()
     if not entry:
+        # Sessão válida de alguém desativado na Whitelist: a trava central responde 403
+        # "Acesso revogado" (em vez de 401), para a tela explicar o motivo (RN14).
+        from flask import g
+        g.acesso_revogado = True
         return None
 
     user.role = entry.role  # perfil sempre sincronizado com a Whitelist

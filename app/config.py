@@ -71,6 +71,9 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
 
+    # Endereço público do app, usado na URL de retorno do Google (vazio = o host da requisição)
+    PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
+
     # Login de desenvolvimento (sem Google). Desligado por padrão; só Development/Testing ligam.
     DEV_LOGIN_ENABLED = False
 
