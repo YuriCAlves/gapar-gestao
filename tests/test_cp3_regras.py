@@ -276,3 +276,26 @@ def test_cadastro_com_foto_multipart(vol_client, app, tmp_path):
     r = vol_client.post("/api/animais", data={"nome": "Foto", "sexo": "Fêmea", "foto": (_imagem((800, 600)), "f.png")},
                         content_type="multipart/form-data")
     assert r.status_code == 201 and r.get_json()["animal"]["foto_url"].startswith("/static/uploads/")
+
+
+# --- RNF07/LGPD: CPF e endereço do adotante só para a Administradora ---------
+
+def test_lgpd_voluntaria_nao_ve_cpf_nem_endereco(app, vol_client, admin_client):
+    from flask import g
+
+    def como(cliente, metodo, url, **kw):
+        g.pop("_login_user", None)  # os fixtures compartilham um app context; cada chamada recarrega a sessão
+        return getattr(cliente, metodo)(url, **kw)
+
+    a = _animal("disponível")
+    r = como(vol_client, "post", f"/api/adocoes/{a.id}", json={
+        "adotante_nome": "Ana", "adotante_telefone": "41999990000",
+        "adotante_cpf": "123.456.789-09", "adotante_endereco": "Rua A, 1"})
+    assert r.status_code == 201
+    for corpo in (r.get_json()["adocao"],
+                  como(vol_client, "get", f"/api/adocoes/{a.id}").get_json()["adocao"],
+                  como(vol_client, "get", f"/api/animais/{a.id}").get_json()["adocao"]):
+        assert "adotante_cpf" not in corpo and "adotante_endereco" not in corpo
+        assert corpo["adotante_telefone"] == "41999990000"
+    completo = como(admin_client, "get", f"/api/animais/{a.id}").get_json()["adocao"]
+    assert completo["adotante_cpf"] == "123.456.789-09" and completo["adotante_endereco"] == "Rua A, 1"
