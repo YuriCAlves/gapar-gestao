@@ -72,6 +72,8 @@ def create_app(config_name=None):
 
     @app.errorhandler(ApiError)
     def api_error(error):
+        # Descarta alterações pela metade (ex.: campos já atribuídos antes de a validação falhar)
+        db.session.rollback()
         return jsonify(error.to_response()[0]), error.status
 
     @app.after_request
@@ -118,6 +120,46 @@ def create_app(config_name=None):
     def internal_error(error):
         db.session.rollback()
         return _json_error(500, "Erro interno do servidor", "Ocorreu um erro inesperado no processamento.")
+
+    # Rede de segurança: uma restrição do banco (UNIQUE, CHECK, chave estrangeira, tamanho de
+    # coluna) violada por uma corrida ou por um dado que escapou da validação vira resposta JSON
+    # clara, e não um erro 500. O detalhe técnico fica só no log do servidor.
+    from sqlalchemy.exc import DataError, IntegrityError
+
+    from .models.base import AuditoriaImutavel, ExclusaoFisicaProibida
+
+    @app.errorhandler(ExclusaoFisicaProibida)
+    def physical_delete_error(error):
+        db.session.rollback()
+        app.logger.warning("Exclusão física bloqueada: %s", error)
+        return _json_error(422, "Exclusão não permitida",
+                           "Registros de animais, prontuários e vacinas não podem ser apagados; use a exclusão lógica (RN03).")
+
+    @app.errorhandler(AuditoriaImutavel)
+    def immutable_audit_error(error):
+        db.session.rollback()
+        app.logger.warning("Alteração da auditoria bloqueada: %s", error)
+        return _json_error(422, "Auditoria imutável",
+                           "A trilha de auditoria não pode ser alterada nem apagada (RN16).")
+
+    @app.errorhandler(IntegrityError)
+    def integrity_error(error):
+        db.session.rollback()
+        app.logger.warning("Violação de integridade no banco: %s", getattr(error, "orig", error))
+        # 23001 (restrict_violation): gatilhos do PostgreSQL que protegem RN03 e RN16
+        if getattr(getattr(error, "orig", None), "pgcode", None) == "23001":
+            return _json_error(422, "Operação não permitida",
+                               "Este registro é protegido: não pode ser apagado nem alterado (RN03, RN16).")
+        return _json_error(409, "Conflito de dados",
+                           "Estes dados conflitam com um registro já existente ou com uma regra do cadastro. "
+                           "Atualize a tela, confira as informações e tente novamente.")
+
+    @app.errorhandler(DataError)
+    def data_error(error):
+        db.session.rollback()
+        app.logger.warning("Dado recusado pelo banco: %s", getattr(error, "orig", error))
+        return _json_error(400, "Dados inválidos",
+                           "Algum campo tem valor ou tamanho que o cadastro não aceita. Confira as informações e tente novamente.")
 
     from .commands import create_admin, seed_data
     app.cli.add_command(create_admin)

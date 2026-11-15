@@ -1,20 +1,33 @@
-import re
-from datetime import date
-from flask import jsonify, request
+from flask import jsonify
 from flask_login import current_user
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.adoption import Adoption
 from app.models.blacklist import NonEligiblePerson
+from app.utils import tempo
 from app.utils.audit import log_audit_event
-from app.utils.validation import ApiError, parse_date
+from app.utils.validation import ApiError, clean_text, get_payload, model_text, only_digits, parse_bool, parse_date
 from . import adoptions_bp
 
 
-def _limpar_numeros(valor):
-    if not valor:
-        return ""
-    return re.sub(r"\D", "", str(valor))
+def _motivo_de_bloqueio(nome, cpf, telefone):
+    """RN15: confere o interessado contra a lista sigilosa. Devolve o motivo interno ou None.
+
+    O motivo vai apenas para a trilha de auditoria (visível só à Administradora), nunca para a resposta.
+    """
+    cpf_limpo = only_digits(cpf)
+    tel_limpo = only_digits(telefone)
+    nome_normalizado = " ".join(nome.lower().split())
+
+    registros = db.session.query(NonEligiblePerson.nome, NonEligiblePerson.cpf, NonEligiblePerson.telefone).all()
+    for item_nome, item_cpf, item_telefone in registros:
+        if cpf_limpo and item_cpf and only_digits(item_cpf) == cpf_limpo:
+            return "CPF constante na lista de não aptos"
+        if tel_limpo and item_telefone and only_digits(item_telefone) == tel_limpo:
+            return "Telefone constante na lista de não aptos"
+        if nome_normalizado == " ".join((item_nome or "").lower().split()):
+            return "Nome idêntico constante na lista de não aptos"
+    return None
 
 
 @adoptions_bp.route("/registrar/<int:animal_id>", methods=["POST"])
@@ -33,46 +46,28 @@ def register_adoption(animal_id):
         raise ApiError("Animal não disponível para adoção", 422,
                        f"Só é possível adotar animais 'disponível' ou em 'lar temporário' (status atual: '{animal.status_operacional}').")
 
-    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    data = get_payload()
 
-    adotante_nome = (data.get("adotante_nome") or "").strip()
-    adotante_telefone = (data.get("adotante_telefone") or "").strip()
-    adotante_cpf = (data.get("adotante_cpf") or "").strip()
-    adotante_endereco = (data.get("adotante_endereco") or "").strip()
-    observacoes = (data.get("observacoes") or "").strip()
-    termo_fisico = bool(data.get("termo_fisico_assinado") or data.get("termo_assinado"))
+    adotante_nome = model_text(data, Adoption, "adotante_nome", default="")
+    adotante_telefone = model_text(data, Adoption, "adotante_telefone", default="")
+    adotante_cpf = model_text(data, Adoption, "adotante_cpf", default="")
+    adotante_endereco = model_text(data, Adoption, "adotante_endereco", default="")
+    observacoes = clean_text(data, "observacoes", default="")
+    termo_fisico = parse_bool(data.get("termo_fisico_assinado")) or parse_bool(data.get("termo_assinado"))
 
     # Validação RN04: Exigência obrigatória de nome, telefone e data
     if not adotante_nome or not adotante_telefone:
         raise ApiError("Campos obrigatórios ausentes", 400,
                        "Nome e telefone/contato do adotante são estritamente obrigatórios (RN04).")
 
-    data_adocao = parse_date(data.get("data_adocao"), "data_adocao", default=date.today())
+    hoje = tempo.hoje()
+    data_adocao = parse_date(data.get("data_adocao"), "data_adocao", default=hoje)
+    if data_adocao > hoje:
+        raise ApiError("Data inválida", 400, "A data da adoção não pode ser uma data futura.")
 
     # Validação RN15: Checagem contra a Lista Sigilosa de Não Aptos
-    cpf_limpo = _limpar_numeros(adotante_cpf)
-    tel_limpo = _limpar_numeros(adotante_telefone)
-
-    bloqueado = False
-    motivo_bloqueio = ""
-
-    # Busca registros na lista de não aptos
-    registros_bloqueados = NonEligiblePerson.query.all()
-    for item in registros_bloqueados:
-        if cpf_limpo and item.cpf and _limpar_numeros(item.cpf) == cpf_limpo:
-            bloqueado = True
-            motivo_bloqueio = "CPF constante na lista de não aptos"
-            break
-        if tel_limpo and item.telefone and _limpar_numeros(item.telefone) == tel_limpo:
-            bloqueado = True
-            motivo_bloqueio = "Telefone constante na lista de não aptos"
-            break
-        if adotante_nome.lower() == item.nome.strip().lower():
-            bloqueado = True
-            motivo_bloqueio = "Nome idêntico constante na lista de não aptos"
-            break
-
-    if bloqueado:
+    motivo_bloqueio = _motivo_de_bloqueio(adotante_nome, adotante_cpf, adotante_telefone)
+    if motivo_bloqueio:
         log_audit_event(
             acao="TENTATIVA_ADOCAO_BLOQUEADA_NAO_APTO",
             entidade="Adoption",
@@ -99,16 +94,18 @@ def register_adoption(animal_id):
     )
     db.session.add(adocao)
 
-    # Transição do status e congelamento imediato do animal (RN05)
+    # Transição do status e congelamento imediato do animal (RN05), na mesma transação da
+    # adoção e do registro de auditoria: ou tudo é gravado, ou nada.
     animal.status_operacional = Animal.STATUS_ADOTADO
-    db.session.commit()
-
+    db.session.flush()
     log_audit_event(
         acao="ADOCAO_FORMALIZADA",
         entidade="Adoption",
         entidade_id=adocao.id,
-        detalhes=f"Adoção formalizada: Cão {animal.nome} adotado por {adotante_nome}. Status alterado para 'adotado' e histórico congelado (RN05)."
+        detalhes=f"Adoção formalizada: Cão {animal.nome} adotado por {adotante_nome}. Status alterado para 'adotado' e histórico congelado (RN05).",
+        commit=False,
     )
+    db.session.commit()
 
     return jsonify({
         "sucesso": True,
@@ -124,18 +121,10 @@ def register_adoption(animal_id):
 def get_adoption_record(animal_id):
     """Consulta os dados formais da adoção preservados indefinidamente (RN06)."""
     animal = Animal.query.filter_by(id=animal_id, is_deleted=False).first_or_404()
-    
-    if not animal.adoption:
-        return jsonify({
-            "animal_id": animal.id,
-            "status": animal.status_operacional,
-            "congelado": animal.is_frozen,
-            "adocao": None
-        }), 200
 
     return jsonify({
         "animal_id": animal.id,
         "status": animal.status_operacional,
         "congelado": animal.is_frozen,
-        "adocao": animal.adoption.to_dict()
+        "adocao": animal.adoption.to_dict() if animal.adoption else None
     }), 200

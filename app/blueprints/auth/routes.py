@@ -171,6 +171,9 @@ def login_info():
         "endpoint_id_token": url_for("auth.google_token_auth", _external=True),
         "requisito": "O e-mail deve constar previamente na Whitelist (RF02, RN12)",
         "dev_login": bool(current_app.config.get("DEV_LOGIN_ENABLED")),
+        "google_configurado": bool(
+            current_app.config.get("GOOGLE_CLIENT_ID") and current_app.config.get("GOOGLE_CLIENT_SECRET")
+        ),
     }), 200
 
 
@@ -220,16 +223,18 @@ def google_login():
 @auth_bp.route("/callback", methods=["GET"])
 def google_callback():
     """Conclui o fluxo por redirecionamento: troca o code, valida o ID Token e abre a sessão."""
+    # Esta rota é aberta pelo navegador (não por fetch), então toda falha volta para a tela de
+    # login do SPA com um código curto em ?erro=, em vez de mostrar JSON cru para a usuária.
+    def falhou(codigo):
+        return redirect(f"/entrar?erro={codigo}")
+
     expected_state = session.pop("oauth_state", None)
     if not expected_state or request.args.get("state") != expected_state:
-        return jsonify({"error": "Estado OAuth inválido ou expirado."}), 400
-
-    if request.args.get("error"):
-        return jsonify({"error": "Falha na autorização do Google", "detalhes": request.args["error"]}), 400
+        return falhou("google")
 
     code = request.args.get("code")
-    if not code:
-        return jsonify({"error": "Código de autorização não fornecido."}), 400
+    if request.args.get("error") or not code:
+        return falhou("google")
 
     try:
         token_response = requests.post(GOOGLE_TOKEN_URL, data={
@@ -241,22 +246,22 @@ def google_callback():
         }, timeout=10)
         token_data = token_response.json()
     except (requests.RequestException, ValueError):
-        return jsonify({"error": "Erro na comunicação com a API do Google."}), 502
+        return falhou("google")
 
     if token_response.status_code != 200 or "id_token" not in token_data:
-        return jsonify({"error": "Falha ao obter token junto ao Google."}), 400
+        return falhou("google")
 
     claims, erro = _verify_id_token(token_data["id_token"])
     if erro:
-        return jsonify({"error": erro}), 401
+        return falhou("google")
 
-    resp, status = _authenticate(
+    _, status = _authenticate(
         claims["email"], claims.get("name"), claims["sub"],
         token_data.get("access_token"), token_data.get("refresh_token"),
     )
     if status == 200:
         return redirect("/")
-    return resp, status
+    return falhou("sem_acesso" if status == 403 else "falha")
 
 
 @auth_bp.route("/dev-login", methods=["POST"])

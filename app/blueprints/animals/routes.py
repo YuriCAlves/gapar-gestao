@@ -1,13 +1,35 @@
-from datetime import date
-from flask import jsonify, request, current_app
+from flask import jsonify, request
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.health import Vaccination, Prescription, MedicalRecord
+from app.utils import tempo
 from app.utils.images import compress_and_save_photo
 from app.utils.audit import log_audit_event
 from app.utils.decorators import admin_required
-from app.utils.validation import ApiError, parse_bool, parse_float, require_choice
+from app.utils.saude import prescription_dict, vaccine_dicts
+from app.utils.validation import (
+    ApiError, clean_text, get_payload, model_text, parse_bool, parse_date, parse_float, require_choice,
+)
 from . import animals_bp
+
+RACA_PADRAO = "Sem Raça Definida (SRD)"
+
+# Textos opcionais do cadastro com tamanho limitado pela coluna
+CAMPOS_TEXTO_CURTO = ["idade_estimada", "pelagem", "local_resgate", "localizacao_baia", "codigo_identificador"]
+# Textos opcionais sem limite de tamanho
+CAMPOS_TEXTO_LONGO = ["motivo_resgate", "cuidados_especiais"]
+CAMPOS_BOOLEANOS = ["is_castrado", "is_microchipado", "is_idoso"]
+
+_SIM = ("true", "1", "sim")
+_NAO = ("false", "0", "nao", "não")
+
+
+def _foto_url_informada(data):
+    """Endereço de foto enviado como texto (sem upload): aceita apenas URL http(s) ou caminho do site."""
+    url = model_text(data, Animal, "foto_url")
+    if url and not url.startswith(("http://", "https://", "/")):
+        raise ApiError("Valor inválido", 400, "O campo 'foto_url' deve ser um endereço de imagem válido.")
+    return url
 
 
 @animals_bp.route("", methods=["GET"])
@@ -22,15 +44,20 @@ def list_animals():
     sexo_filter = request.args.get("sexo", "").strip()
     castrado_filter = request.args.get("castrado", "").strip().lower()
     idoso_filter = request.args.get("idoso", "").strip().lower()
+    cuidados_filter = request.args.get("cuidados_especiais", "").strip().lower()
+    ativos_filter = request.args.get("ativos", "").strip().lower()
 
     query = Animal.query.filter_by(is_deleted=False)
 
     if search_query:
+        # Os curingas do LIKE digitados na busca são tratados como texto comum
+        termo = search_query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        padrao = f"%{termo}%"
         query = query.filter(
             db.or_(
-                Animal.nome.ilike(f"%{search_query}%"),
-                Animal.codigo_identificador.ilike(f"%{search_query}%"),
-                Animal.raca.ilike(f"%{search_query}%")
+                Animal.nome.ilike(padrao, escape="\\"),
+                Animal.codigo_identificador.ilike(padrao, escape="\\"),
+                Animal.raca.ilike(padrao, escape="\\")
             )
         )
 
@@ -43,17 +70,31 @@ def list_animals():
     if sexo_filter:
         query = query.filter_by(sexo=sexo_filter)
 
-    if castrado_filter in ("true", "1", "sim"):
+    if castrado_filter in _SIM:
         query = query.filter_by(is_castrado=True)
-    elif castrado_filter in ("false", "0", "nao", "não"):
+    elif castrado_filter in _NAO:
         query = query.filter_by(is_castrado=False)
 
-    if idoso_filter in ("true", "1", "sim"):
+    if idoso_filter in _SIM:
         query = query.filter_by(is_idoso=True)
-    elif idoso_filter in ("false", "0", "nao", "não"):
+    elif idoso_filter in _NAO:
         query = query.filter_by(is_idoso=False)
 
-    query = query.order_by(Animal.created_at.desc())
+    # RF08/RF11: animais com (ou sem) cuidados especiais anotados
+    tem_cuidados = db.and_(Animal.cuidados_especiais.isnot(None), db.func.trim(Animal.cuidados_especiais) != "")
+    if cuidados_filter in _SIM:
+        query = query.filter(tem_cuidados)
+    elif cuidados_filter in _NAO:
+        query = query.filter(db.not_(tem_cuidados))
+
+    # ativos=sim: só animais sob os cuidados da ONG; ativos=nao: só adotados e óbitos (histórico)
+    status_finais = [Animal.STATUS_ADOTADO, Animal.STATUS_OBITO]
+    if ativos_filter in _SIM:
+        query = query.filter(Animal.status_operacional.notin_(status_finais))
+    elif ativos_filter in _NAO:
+        query = query.filter(Animal.status_operacional.in_(status_finais))
+
+    query = query.order_by(Animal.created_at.desc(), Animal.id.desc())
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
     return jsonify({
@@ -67,7 +108,9 @@ def list_animals():
             "porte": porte_filter,
             "sexo": sexo_filter,
             "castrado": castrado_filter,
-            "idoso": idoso_filter
+            "idoso": idoso_filter,
+            "cuidados_especiais": cuidados_filter,
+            "ativos": ativos_filter
         },
         "animais": [animal.to_dict() for animal in pagination.items]
     }), 200
@@ -80,53 +123,50 @@ def create_animal():
     Estado inicial obrigatório: 'em acolhimento' e data de entrada do dia.
     Suporta JSON ou multipart/form-data com upload de foto.
     """
-    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    data = get_payload()
 
-    nome = (data.get("nome") or "").strip()
-    sexo = (data.get("sexo") or "").strip()
-    porte = (data.get("porte") or "Médio").strip()
+    nome = model_text(data, Animal, "nome", default="")
+    sexo = clean_text(data, "sexo", default="")
+    porte = clean_text(data, "porte", default="Médio")
 
     if not nome or not sexo:
         raise ApiError("Dados incompletos", 400, "Nome e sexo são campos obrigatórios para o cadastro.")
     require_choice(sexo, "sexo", Animal.SEXOS)
     require_choice(porte, "porte", Animal.PORTES)
-    peso_val = parse_float(data.get("peso_kg"), "peso_kg", minimo=0)
+    peso_val = parse_float(data.get("peso_kg"), "peso_kg", minimo=0, positivo=True)
 
-    foto_url = data.get("foto_url")
+    campos = {campo: model_text(data, Animal, campo) for campo in CAMPOS_TEXTO_CURTO}
+    campos.update({campo: clean_text(data, campo) for campo in CAMPOS_TEXTO_LONGO})
+    campos.update({campo: parse_bool(data.get(campo)) for campo in CAMPOS_BOOLEANOS})
+    raca = model_text(data, Animal, "raca", default=RACA_PADRAO)
+
+    foto_url = _foto_url_informada(data)
     if "foto" in request.files:
         foto_url = compress_and_save_photo(request.files["foto"]) or foto_url
 
     # Criação da entidade garantindo RN01 (status inicial 'em acolhimento' e data de hoje)
     animal = Animal(
         nome=nome,
-        idade_estimada=data.get("idade_estimada"),
         sexo=sexo,
-        raca=data.get("raca") or "Sem Raça Definida (SRD)",
+        raca=raca,
         porte=porte,
-        pelagem=data.get("pelagem"),
         peso_kg=peso_val,
         foto_url=foto_url,
-        local_resgate=data.get("local_resgate"),
-        data_entrada=date.today(), # RN01
-        motivo_resgate=data.get("motivo_resgate"),
-        is_castrado=parse_bool(data.get("is_castrado")),
-        is_microchipado=parse_bool(data.get("is_microchipado")),
-        is_idoso=parse_bool(data.get("is_idoso")),
-        cuidados_especiais=data.get("cuidados_especiais"),
-        localizacao_baia=data.get("localizacao_baia"),
-        codigo_identificador=data.get("codigo_identificador"),
-        status_operacional=Animal.STATUS_ACOLHIMENTO # RN01
+        data_entrada=tempo.hoje(), # RN01
+        status_operacional=Animal.STATUS_ACOLHIMENTO, # RN01
+        **campos
     )
 
     db.session.add(animal)
-    db.session.commit()
-
+    db.session.flush()
     log_audit_event(
         acao="ANIMAL_CADASTRADO",
         entidade="Animal",
         entidade_id=animal.id,
-        detalhes=f"Cadastro do animal {animal.nome} (Status inicial: {animal.status_operacional})"
+        detalhes=f"Cadastro do animal {animal.nome} (Status inicial: {animal.status_operacional})",
+        commit=False,
     )
+    db.session.commit()
 
     return jsonify({
         "sucesso": True,
@@ -139,6 +179,7 @@ def create_animal():
 def get_animal(animal_id):
     """Consulta ficha completa do cão organizada por módulos (RF12)."""
     animal = Animal.query.filter_by(id=animal_id, is_deleted=False).first_or_404()
+    hoje = tempo.hoje()
 
     # Busca registros relacionados
     vacinas = animal.vaccinations.order_by(Vaccination.data_aplicacao.desc()).all()
@@ -148,8 +189,8 @@ def get_animal(animal_id):
 
     return jsonify({
         "animal": animal.to_dict(),
-        "vacinas": [v.to_dict() for v in vacinas],
-        "prescricoes": [p.to_dict() for p in prescricoes],
+        "vacinas": vaccine_dicts(vacinas, hoje),
+        "prescricoes": [prescription_dict(p, hoje) for p in prescricoes],
         "prontuarios": [m.to_dict() for m in prontuarios],
         "adocao": adocao_info,
         "congelado": animal.is_frozen
@@ -169,42 +210,62 @@ def update_animal(animal_id):
             "mensagem": f"O animal encontra-se com status '{animal.status_operacional}'. Cadastros e fichas de animais adotados ou com óbito são estritamente congelados para alterações (RN05)."
         }), 422
 
-    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    data = get_payload()
+    novos = {}
 
-    if "nome" in data and not str(data["nome"]).strip():
-        raise ApiError("Dados incompletos", 400, "O nome do animal não pode ficar vazio.")
+    if "nome" in data:
+        novos["nome"] = model_text(data, Animal, "nome")
+        if not novos["nome"]:
+            raise ApiError("Dados incompletos", 400, "O nome do animal não pode ficar vazio.")
     if "sexo" in data:
-        require_choice(data["sexo"], "sexo", Animal.SEXOS)
+        novos["sexo"] = require_choice(data["sexo"], "sexo", Animal.SEXOS)
     if "porte" in data:
-        require_choice(data["porte"], "porte", Animal.PORTES)
-    peso = parse_float(data["peso_kg"], "peso_kg", minimo=0) if "peso_kg" in data else None
-
-    for field in ["nome", "idade_estimada", "sexo", "raca", "porte", "pelagem",
-                  "local_resgate", "motivo_resgate", "cuidados_especiais",
-                  "localizacao_baia", "codigo_identificador"]:
-        if field in data:
-            setattr(animal, field, data[field])
-
+        novos["porte"] = require_choice(data["porte"], "porte", Animal.PORTES)
+    if "raca" in data:
+        novos["raca"] = model_text(data, Animal, "raca", default=RACA_PADRAO)
     if "peso_kg" in data:
-        animal.peso_kg = peso
+        novos["peso_kg"] = parse_float(data["peso_kg"], "peso_kg", minimo=0, positivo=True)
 
-    for bool_field in ["is_castrado", "is_microchipado", "is_idoso"]:
-        if bool_field in data:
-            setattr(animal, bool_field, parse_bool(data[bool_field]))
+    for campo in CAMPOS_TEXTO_CURTO:
+        if campo in data:
+            novos[campo] = model_text(data, Animal, campo)
+    for campo in CAMPOS_TEXTO_LONGO:
+        if campo in data:
+            novos[campo] = clean_text(data, campo)
+    for campo in CAMPOS_BOOLEANOS:
+        if campo in data:
+            novos[campo] = parse_bool(data[campo])
+
+    # RF07/RF09: a data de entrada nasce como a data do cadastro (RN01), mas pode ser corrigida
+    # depois, por exemplo quando o resgate foi registrado no dia seguinte. Nunca no futuro.
+    if "data_entrada" in data:
+        data_entrada = parse_date(data.get("data_entrada"), "data_entrada")
+        if not data_entrada:
+            raise ApiError("Data inválida", 400, "A data de entrada não pode ficar vazia.")
+        if data_entrada > tempo.hoje():
+            raise ApiError("Data inválida", 400, "A data de entrada não pode ser uma data futura.")
+        novos["data_entrada"] = data_entrada
 
     if "foto" in request.files:
-        animal.foto_url = compress_and_save_photo(request.files["foto"]) or animal.foto_url
+        nova_foto = compress_and_save_photo(request.files["foto"])
+        if nova_foto:
+            novos["foto_url"] = nova_foto
     elif "foto_url" in data:
-        animal.foto_url = data["foto_url"]
+        novos["foto_url"] = _foto_url_informada(data)
 
-    db.session.commit()
+    alterados = [campo for campo, valor in novos.items() if getattr(animal, campo) != valor]
+    for campo in alterados:
+        setattr(animal, campo, novos[campo])
 
-    log_audit_event(
-        acao="ANIMAL_ATUALIZADO",
-        entidade="Animal",
-        entidade_id=animal.id,
-        detalhes=f"Atualização dos dados cadastrais do animal {animal.nome}"
-    )
+    if alterados:
+        log_audit_event(
+            acao="ANIMAL_ATUALIZADO",
+            entidade="Animal",
+            entidade_id=animal.id,
+            detalhes=f"Atualização dos dados cadastrais do animal {animal.nome} (campos: {', '.join(alterados)})",
+            commit=False,
+        )
+        db.session.commit()
 
     return jsonify({
         "sucesso": True,
@@ -217,7 +278,7 @@ def update_animal(animal_id):
 def update_animal_status(animal_id):
     """Transição da máquina de estados operacionais do animal (RN02)."""
     animal = Animal.query.filter_by(id=animal_id, is_deleted=False).first_or_404()
-    data = request.get_json(silent=True) or {}
+    data = get_payload()
     novo_status = data.get("status_operacional")
 
     if novo_status not in Animal.VALID_STATUSES:
@@ -237,14 +298,14 @@ def update_animal_status(animal_id):
 
     status_anterior = animal.status_operacional
     animal.status_operacional = novo_status
-    db.session.commit()
-
     log_audit_event(
         acao="STATUS_ANIMAL_ALTERADO",
         entidade="Animal",
         entidade_id=animal.id,
-        detalhes=f"Transição de status operacional: '{status_anterior}' -> '{novo_status}'"
+        detalhes=f"Transição de status operacional do animal {animal.nome}: '{status_anterior}' -> '{novo_status}'",
+        commit=False,
     )
+    db.session.commit()
 
     return jsonify({
         "sucesso": True,
@@ -264,14 +325,14 @@ def delete_animal(animal_id):
                        "O histórico de animais adotados ou com óbito é preservado indefinidamente (RN05, RN06).")
 
     animal.is_deleted = True # RN03: Soft Delete
-    db.session.commit()
-
     log_audit_event(
         acao="ANIMAL_EXCLUIDO_LOGICO",
         entidade="Animal",
         entidade_id=animal.id,
-        detalhes=f"Exclusão lógica do animal {animal.nome} (RN03)"
+        detalhes=f"Exclusão lógica do animal {animal.nome} (RN03)",
+        commit=False,
     )
+    db.session.commit()
 
     return jsonify({
         "sucesso": True,
@@ -297,14 +358,14 @@ def upload_photo(animal_id):
         raise ApiError("Imagem inválida", 400, "Não foi possível processar a imagem fornecida.")
 
     animal.foto_url = compressed_url
-    db.session.commit()
-
     log_audit_event(
         acao="FOTO_ANIMAL_ATUALIZADA",
         entidade="Animal",
         entidade_id=animal.id,
-        detalhes=f"Upload de nova foto com compressão < 300KB para o animal {animal.nome}"
+        detalhes=f"Upload de nova foto com compressão < 300KB para o animal {animal.nome}",
+        commit=False,
     )
+    db.session.commit()
 
     return jsonify({
         "sucesso": True,

@@ -6,8 +6,12 @@ from .blacklist import NonEligiblePerson
 from .audit import AuditLog
 from .announcement import Announcement, AnnouncementAck
 from .whitelist import Whitelist
+from .base import ExclusaoFisicaProibida, AuditoriaImutavel
 
 __all__ = [
+    "Whitelist",
+    "ExclusaoFisicaProibida",
+    "AuditoriaImutavel",
     "User",
     "Animal",
     "MedicalRecord",
