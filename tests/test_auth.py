@@ -159,3 +159,21 @@ def test_login_info_informa_opcoes(client, app):
     app.config.update(GOOGLE_CLIENT_ID="cid", GOOGLE_CLIENT_SECRET="segredo")
     corpo = client.get("/auth/login").get_json()
     assert corpo["dev_login"] is True and corpo["google_configurado"] is True
+
+
+def test_revogacao_responde_403_uma_vez_e_depois_401(client, app, volunteer_user):
+    assert client.post("/auth/dev-login", json={"email": "vol@gapar.org.br"}).status_code == 200
+    Whitelist.query.filter_by(email="vol@gapar.org.br").first().is_active = False
+    db.session.commit()
+    g.pop("_login_user", None)
+    r = client.get("/api/animais")
+    assert r.status_code == 403 and r.get_json()["erro"] == "Acesso revogado"
+    g.pop("_login_user", None)
+    g.pop("acesso_revogado", None)
+    assert client.get("/api/animais").status_code == 401
+
+
+def test_callback_usa_public_base_url(client, app):
+    app.config.update(GOOGLE_CLIENT_ID="cid", PUBLIC_BASE_URL="http://localhost:5173/")
+    corpo = client.get("/auth/google?format=json").get_json()
+    assert corpo["redirect_uri"] == "http://localhost:5173/auth/callback"

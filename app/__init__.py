@@ -48,9 +48,15 @@ def create_app(config_name=None):
     # nova fique aberta por esquecimento. As rotas /auth/* ficam fora, pois fazem o próprio login.
     @app.before_request
     def require_authenticated_api():
-        from flask import request
-        from flask_login import current_user
+        from flask import request, g
+        from flask_login import current_user, logout_user
         if request.path.startswith("/api/") and not current_user.is_authenticated:
+            if g.get("acesso_revogado"):
+                logout_user()  # encerra a sessão: as próximas requisições recebem 401
+                return jsonify({
+                    "erro": "Acesso revogado",
+                    "mensagem": "Seu e-mail foi desativado na Whitelist pela administração (RN12/RN14)."
+                }), 403
             return jsonify({
                 "erro": "Não autorizado",
                 "mensagem": "Autenticação obrigatória via Google OAuth e Whitelist (RF01/RF02)."

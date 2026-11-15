@@ -40,6 +40,15 @@ def _verify_id_token(token):
     return claims, None
 
 
+def _callback_url():
+    """URL de retorno do Google. PUBLIC_BASE_URL fixa o endereço público (ex.: o Vite em dev,
+    http://localhost:5173), já que atrás de proxy o Flask só enxerga o próprio host."""
+    base = (current_app.config.get("PUBLIC_BASE_URL") or "").rstrip("/")
+    if base:
+        return base + url_for("auth.google_callback")
+    return url_for("auth.google_callback", _external=True)
+
+
 def _initial_admin_email():
     return (current_app.config.get("INITIAL_ADMIN_EMAIL") or "").strip().lower()
 
@@ -202,7 +211,7 @@ def google_login():
 
     state = secrets.token_urlsafe(32)
     session["oauth_state"] = state
-    redirect_uri = url_for("auth.google_callback", _external=True)
+    redirect_uri = _callback_url()
 
     params = {
         "client_id": client_id,
@@ -241,7 +250,7 @@ def google_callback():
             "code": code,
             "client_id": current_app.config.get("GOOGLE_CLIENT_ID"),
             "client_secret": current_app.config.get("GOOGLE_CLIENT_SECRET"),
-            "redirect_uri": url_for("auth.google_callback", _external=True),
+            "redirect_uri": _callback_url(),
             "grant_type": "authorization_code",
         }, timeout=10)
         token_data = token_response.json()
