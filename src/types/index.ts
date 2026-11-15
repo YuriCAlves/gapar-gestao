@@ -208,8 +208,9 @@ export interface Adocao {
   animal_id: number;
   adotante_nome: string;
   adotante_telefone: string;
-  adotante_cpf: string | null;
-  adotante_endereco: string | null;
+  /** CPF e endereço só vêm para a Administradora (LGPD). */
+  adotante_cpf?: string | null;
+  adotante_endereco?: string | null;
   data_adocao: string | null;
   termo_assinado: boolean;
   termo_fisico_assinado: boolean;

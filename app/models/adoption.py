@@ -29,8 +29,12 @@ class Adoption(db.Model):
     
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
-    def to_dict(self):
-        return {
+    # Dados pessoais do adotante visíveis só para a Administradora (RNF07, LGPD)
+    CAMPOS_RESTRITOS = ("adotante_cpf", "adotante_endereco")
+
+    def to_dict(self, completo=False):
+        """`completo=False` omite CPF e endereço do adotante (perfil Voluntária)."""
+        dados = {
             "id": self.id,
             "animal_id": self.animal_id,
             "adotante_nome": self.adotante_nome,
@@ -44,3 +48,7 @@ class Adoption(db.Model):
             "cadastrado_por_user_id": self.cadastrado_por_user_id,
             "created_at": self.created_at.isoformat()
         }
+        if not completo:
+            for campo in self.CAMPOS_RESTRITOS:
+                dados.pop(campo)
+        return dados

@@ -111,7 +111,7 @@ def register_adoption(animal_id):
         "sucesso": True,
         "mensagem": "Adoção registrada com sucesso. Status alterado para 'adotado' e histórico do cão congelado para edições (RN05).",
         "animal_id": animal.id,
-        "adocao": adocao.to_dict(),
+        "adocao": adocao.to_dict(completo=current_user.is_admin),
         "animal": animal.to_dict()
     }), 201
 
@@ -126,5 +126,5 @@ def get_adoption_record(animal_id):
         "animal_id": animal.id,
         "status": animal.status_operacional,
         "congelado": animal.is_frozen,
-        "adocao": animal.adoption.to_dict() if animal.adoption else None
+        "adocao": animal.adoption.to_dict(completo=current_user.is_admin) if animal.adoption else None
     }), 200

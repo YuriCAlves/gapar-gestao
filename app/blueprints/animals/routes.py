@@ -1,3 +1,4 @@
+from flask_login import current_user
 from flask import jsonify, request
 from app.extensions import db
 from app.models.animal import Animal
@@ -185,7 +186,7 @@ def get_animal(animal_id):
     vacinas = animal.vaccinations.order_by(Vaccination.data_aplicacao.desc()).all()
     prescricoes = animal.prescriptions.order_by(Prescription.data_inicio.desc()).all()
     prontuarios = animal.medical_records.order_by(MedicalRecord.data_evento.desc()).all()
-    adocao_info = animal.adoption.to_dict() if animal.adoption else None
+    adocao_info = animal.adoption.to_dict(completo=current_user.is_admin) if animal.adoption else None
 
     return jsonify({
         "animal": animal.to_dict(),
