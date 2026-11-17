@@ -56,3 +56,15 @@ def test_callback_do_google_usa_https_atras_do_proxy(producao_valida):
 def test_dev_login_nao_existe_em_producao(producao_valida):
     app = create_app("production")
     assert app.test_client().post("/auth/dev-login", json={}).status_code == 404
+
+
+def test_foto_sem_storage_remoto_e_recusada_em_producao(producao_valida, monkeypatch):
+    """Sem Supabase Storage, a foto não pode ir para o disco efêmero da Vercel (seria perdida)."""
+    from app.services.storage import save_photo
+    from app.utils.validation import ApiError
+
+    monkeypatch.setattr(ProductionConfig, "SUPABASE_SERVICE_ROLE_KEY", "")
+    app = create_app("production")
+    with app.app_context(), pytest.raises(ApiError) as erro:
+        save_photo(b"jpeg", "x.jpg")
+    assert erro.value.status == 503

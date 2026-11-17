@@ -71,7 +71,11 @@ class Homologacao:
 
         google = self.get("/auth/google")
         destino = google.headers.get("Location", "")
-        redirect_uri = parse_qs(urlparse(destino).query).get("redirect_uri", [""])[0]
+        parametros = parse_qs(urlparse(destino).query)
+        redirect_uri = parametros.get("redirect_uri", [""])[0]
+        client_id = parametros.get("client_id", [""])[0]
+        self.checar("Client ID do Google é real (não é o de exemplo)",
+                    client_id.endswith(".apps.googleusercontent.com") and "mock" not in client_id, client_id)
         self.checar("/auth/google redireciona ao Google", google.status_code == 302 and "accounts.google.com" in destino,
                     f"status {google.status_code}")
         self.checar("Retorno do Google aponta para este domínio em HTTPS", redirect_uri == self.base + "/auth/callback",
