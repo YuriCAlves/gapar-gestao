@@ -9,7 +9,28 @@
 
 Este repositório contém o desenvolvimento exclusivo do **back-end** do sistema GAPAR Gestão, estruturado de forma modular com **Python 3.12**, **Flask (Blueprints)** e **SQLAlchemy**.
 
-### 🧩 Estrutura de Blueprints
+### 🗂️ Estrutura de pastas (MVC)
+
+```
+app/
+├── models/        # M — entidades SQLAlchemy, regras de integridade e serialização (to_dict)
+├── views/         # V — SPA React + TypeScript (index.html, public/, src/)
+├── controllers/   # C — um Blueprint por recurso (*_controller.py), registrados em register_controllers()
+├── services/      # regras de domínio e integrações usadas pelos controllers (auditoria, saúde, .ics, fotos)
+├── utils/         # utilitários genéricos (fuso/datas, validação, criptografia, decoradores de acesso)
+├── static/        # uploads locais de fotos
+├── config.py, extensions.py, commands.py
+└── __init__.py    # create_app(): fábrica da aplicação
+api/index.py       # entrada serverless na Vercel
+migrations/        # Alembic (Flask-Migrate)
+tests/             # testes pytest do back-end
+docs/              # requisitos, planos e telas de referência
+```
+
+O `vite.config.ts` (na raiz) usa `app/views` como raiz do Vite e gera o build em `dist/`;
+`npm run dev`, `npm run build` e `npm test` continuam sendo executados na raiz.
+
+### 🧩 Controllers (Blueprints)
 
 - `auth` (`/auth`): Autenticação Google OAuth 2.0 (RF01), validação de Whitelist (RF02) e controle de sessão.
 - `core` (`/` e `/api/hoje`): Painel operacional diário 'Hoje' (RF23) com consolidação de medicações e vacinas do dia.

@@ -1,13 +1,14 @@
-from flask import jsonify
+from flask import Blueprint, jsonify
 from flask_login import current_user
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.adoption import Adoption
 from app.models.blacklist import NonEligiblePerson
 from app.utils import tempo
-from app.utils.audit import log_audit_event
+from app.services.audit import log_audit_event
 from app.utils.validation import ApiError, clean_text, get_payload, model_text, only_digits, parse_bool, parse_date
-from . import adoptions_bp
+
+adoptions_bp = Blueprint("adoptions", __name__, url_prefix="/api/adocoes")
 
 
 def _motivo_de_bloqueio(nome, cpf, telefone):

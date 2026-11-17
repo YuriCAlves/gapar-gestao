@@ -7,7 +7,7 @@
   "functions": {
     "api/index.py": {
       "maxDuration": 30,
-      "excludeFiles": "{.venv,gapar-frontend,gapar-gestao,tests,node_modules,src,instance}/**"
+      "excludeFiles": "{.venv,gapar-frontend,gapar-gestao,tests,node_modules,app/views,docs,dist,instance}/**"
     }
   },
   "rewrites": [

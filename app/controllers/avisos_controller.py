@@ -1,11 +1,12 @@
-from flask import jsonify, request
+from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
 from sqlalchemy.exc import IntegrityError
 from app.models import Animal, Announcement, AnnouncementAck
 from app.extensions import db
-from app.utils.audit import log_audit_event
+from app.services.audit import log_audit_event
 from app.utils.validation import ApiError, clean_text, get_payload, model_text, parse_bool, parse_int, require_choice
-from . import avisos_bp
+
+avisos_bp = Blueprint("avisos", __name__, url_prefix="/api/avisos")
 
 TIPOS = ["TURNO", "DIRETORIA"]
 

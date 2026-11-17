@@ -1,7 +1,7 @@
 import io
 import uuid
 from PIL import Image, ImageOps, UnidentifiedImageError
-from app.utils.storage import save_photo
+from app.services.storage import save_photo
 from app.utils.validation import ApiError
 
 

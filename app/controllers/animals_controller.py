@@ -1,17 +1,18 @@
 from flask_login import current_user
-from flask import jsonify, request
+from flask import Blueprint, jsonify, request
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.health import Vaccination, Prescription, MedicalRecord
 from app.utils import tempo
-from app.utils.images import compress_and_save_photo
-from app.utils.audit import log_audit_event
+from app.services.images import compress_and_save_photo
+from app.services.audit import log_audit_event
 from app.utils.decorators import admin_required
-from app.utils.saude import prescription_dict, vaccine_dicts
+from app.services.saude import prescription_dict, vaccine_dicts
 from app.utils.validation import (
     ApiError, clean_text, get_payload, model_text, parse_bool, parse_date, parse_float, require_choice,
 )
-from . import animals_bp
+
+animals_bp = Blueprint("animals", __name__, url_prefix="/api/animais")
 
 RACA_PADRAO = "Sem Raça Definida (SRD)"
 

@@ -27,22 +27,10 @@ def create_app(config_name=None):
     if upload_path:
         os.makedirs(upload_path, exist_ok=True)
 
-    # Registra Blueprints (Back-end)
-    from .blueprints.auth import auth_bp
-    from .blueprints.core import core_bp
-    from .blueprints.animals import animals_bp
-    from .blueprints.health import health_bp
-    from .blueprints.adoptions import adoptions_bp
-    from .blueprints.admin import admin_bp
-    from .blueprints.avisos import avisos_bp
+    # Registra os Controllers (Blueprints da API)
+    from .controllers import register_controllers
 
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(core_bp)
-    app.register_blueprint(animals_bp)
-    app.register_blueprint(health_bp)
-    app.register_blueprint(adoptions_bp)
-    app.register_blueprint(admin_bp)
-    app.register_blueprint(avisos_bp)
+    register_controllers(app)
 
     # RNF05/RN12: toda a API interna exige sessão ativa. A trava é central para que nenhuma rota
     # nova fique aberta por esquecimento. As rotas /auth/* ficam fora, pois fazem o próprio login.
