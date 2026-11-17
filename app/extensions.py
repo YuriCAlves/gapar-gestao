@@ -6,7 +6,13 @@ db = SQLAlchemy()
 migrate = Migrate()
 login_manager = LoginManager()
 
-# Configuração do Flask-Login
-login_manager.login_view = "auth.login"
-login_manager.login_message = "Por favor, faça login com sua conta Google autorizada para acessar o sistema."
-login_manager.login_message_category = "warning"
+
+
+@login_manager.unauthorized_handler
+def unauthorized():
+    """API JSON pura: sem redirecionamento para página de login (o SPA trata o 401)."""
+    from flask import jsonify
+    return jsonify({
+        "error": "Não autorizado",
+        "mensagem": "Autenticação obrigatória via Google OAuth e Whitelist (RF01/RF02)."
+    }), 401

@@ -4,9 +4,14 @@ from .health import MedicalRecord, Vaccination, Prescription, MedicationLog
 from .adoption import Adoption
 from .blacklist import NonEligiblePerson
 from .audit import AuditLog
+from .announcement import Announcement, AnnouncementAck
 from .whitelist import Whitelist
+from .base import ExclusaoFisicaProibida, AuditoriaImutavel
 
 __all__ = [
+    "Whitelist",
+    "ExclusaoFisicaProibida",
+    "AuditoriaImutavel",
     "User",
     "Animal",
     "MedicalRecord",
@@ -16,5 +21,6 @@ __all__ = [
     "Adoption",
     "NonEligiblePerson",
     "AuditLog",
-    "Whitelist"
+    "Announcement",
+    "AnnouncementAck",
 ]
