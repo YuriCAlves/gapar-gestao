@@ -56,7 +56,13 @@ class Homologacao:
         self.checar("Sem sessão, /auth/status informa deslogado", corpo.get("autenticado") is False,
                     str(corpo)[:120])
 
-        login = self.get("/auth/login").json()
+        resposta_login = self.get("/auth/login")
+        try:
+            login = resposta_login.json()
+        except ValueError:
+            login = {}
+            self.checar("/auth/login responde JSON (não está atrás de proteção da Vercel?)", False,
+                        f"status {resposta_login.status_code}")
         self.checar("Login de desenvolvimento desligado", login.get("dev_login") is False, str(login))
         self.checar("Google OAuth configurado", login.get("google_configurado") is True, str(login))
 
