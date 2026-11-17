@@ -2,7 +2,7 @@ import secrets
 from urllib.parse import urlencode
 
 import requests
-from flask import jsonify, request, redirect, url_for, current_app, session
+from flask import Blueprint, jsonify, request, redirect, url_for, current_app, session
 from flask_login import login_user, logout_user, login_required, current_user
 from google.auth.exceptions import GoogleAuthError
 from google.auth.transport import requests as google_requests
@@ -11,8 +11,9 @@ from google.oauth2 import id_token as google_id_token
 from app.extensions import db
 from app.models.user import User
 from app.models.whitelist import Whitelist
-from app.utils.audit import log_audit_event
-from . import auth_bp
+from app.services.audit import log_audit_event
+
+auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"

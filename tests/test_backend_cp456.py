@@ -19,8 +19,9 @@ from app.models.audit import AuditLog
 from app.models.base import AuditoriaImutavel, ExclusaoFisicaProibida
 from app.models.health import MedicationLog, Prescription, Vaccination
 from app.models.whitelist import Whitelist
-from app.utils import ics, tempo
-from app.utils.audit import log_audit_event
+from app.services import ics
+from app.utils import tempo
+from app.services.audit import log_audit_event
 
 HOJE = date.today()
 
@@ -52,9 +53,9 @@ def test_baixa_concorrente_vira_ja_baixado(vol_client, app):
     db.session.add(MedicationLog(prescription_id=p.id, data_aplicacao=HOJE, horario_previsto="08:00",
                                  horario_aplicado="08:01"))
     db.session.commit()
-    from app.utils import saude
+    from app.services import saude
     real = saude.find_dose_log
-    with patch("app.blueprints.health.routes.find_dose_log", side_effect=[None, real(p.id, HOJE, "08:00")]):
+    with patch("app.controllers.health_controller.find_dose_log", side_effect=[None, real(p.id, HOJE, "08:00")]):
         r = vol_client.post(f"/api/saude/medicacao/baixa/{p.id}", json={"horario_previsto": "08:00"})
     assert r.status_code == 200
     corpo = r.get_json()
@@ -173,7 +174,7 @@ def test_edicao_sem_mudanca_nao_gera_registro(vol_client, app):
 
 
 def test_falha_na_auditoria_avulsa_vai_para_o_log(app, caplog):
-    with app.test_request_context("/"), patch("app.utils.audit._build_entry", side_effect=RuntimeError("x")):
+    with app.test_request_context("/"), patch("app.services.audit._build_entry", side_effect=RuntimeError("x")):
         with caplog.at_level(logging.ERROR):
             assert log_audit_event("TESTE", "Animal") is None
     assert "Falha ao gravar a trilha de auditoria" in caplog.text
@@ -269,9 +270,9 @@ def test_ultima_administradora_ativa_protegida(admin_client, app):
     db.session.add(unica)
     Whitelist.query.filter_by(email="admin@gapar.org.br").one().role = "Voluntaria"
     db.session.commit()
-    from app.blueprints.admin.routes import _proteger_contra_trancamento
+    from app.controllers.admin_controller import _proteger_contra_trancamento
     from app.utils.validation import ApiError
-    with app.test_request_context("/"), patch("app.blueprints.admin.routes.current_user", MagicMock(email="admin@gapar.org.br")):
+    with app.test_request_context("/"), patch("app.controllers.admin_controller.current_user", MagicMock(email="admin@gapar.org.br")):
         with pytest.raises(ApiError) as exc:
             _proteger_contra_trancamento(unica, False, "Administradora")
     assert "ao menos uma Administradora" in exc.value.mensagem
@@ -322,7 +323,7 @@ def test_foto_vai_para_supabase(vol_client, app, tmp_path):
     app.config["UPLOAD_FOLDER"] = str(tmp_path)
     a = _animal()
     resposta = MagicMock(status_code=200, text="{}")
-    with patch("app.utils.storage.requests.post", return_value=resposta) as post:
+    with patch("app.services.storage.requests.post", return_value=resposta) as post:
         r = vol_client.post(f"/api/animais/{a.id}/foto", data={"foto": (_imagem(), "f.png")},
                             content_type="multipart/form-data")
     assert r.status_code == 200
@@ -343,7 +344,7 @@ def test_falha_no_supabase_vira_erro_json(vol_client, app, efeito):
     _supabase(app)
     a = _animal()
     kwargs = {"side_effect": efeito} if isinstance(efeito, Exception) else {"return_value": efeito}
-    with patch("app.utils.storage.requests.post", **kwargs):
+    with patch("app.services.storage.requests.post", **kwargs):
         r = vol_client.post(f"/api/animais/{a.id}/foto", data={"foto": (_imagem((300, 300)), "f.png")},
                             content_type="multipart/form-data")
     assert r.status_code == 502
@@ -354,7 +355,7 @@ def test_falha_no_supabase_vira_erro_json(vol_client, app, efeito):
 
 def test_cadastro_com_foto_no_supabase(vol_client, app):
     _supabase(app)
-    with patch("app.utils.storage.requests.post", return_value=MagicMock(status_code=200, text="")):
+    with patch("app.services.storage.requests.post", return_value=MagicMock(status_code=200, text="")):
         r = vol_client.post("/api/animais", data={"nome": "Nuvem", "sexo": "Fêmea", "foto": (_imagem((400, 400)), "n.png")},
                             content_type="multipart/form-data")
     assert r.status_code == 201 and "/storage/v1/object/public/animais/" in r.get_json()["animal"]["foto_url"]
@@ -363,7 +364,7 @@ def test_cadastro_com_foto_no_supabase(vol_client, app):
 def test_sem_supabase_continua_no_disco(vol_client, app, tmp_path):
     app.config["UPLOAD_FOLDER"] = str(tmp_path)
     a = _animal()
-    with patch("app.utils.storage.requests.post") as post:
+    with patch("app.services.storage.requests.post") as post:
         r = vol_client.post(f"/api/animais/{a.id}/foto", data={"foto": (_imagem((300, 300)), "f.png")},
                             content_type="multipart/form-data")
     assert r.status_code == 200 and r.get_json()["foto_url"].startswith("/static/uploads/")
@@ -553,7 +554,7 @@ def test_erros_do_banco_viram_json(app):
 def test_check_do_banco_nao_vira_500(vol_client, app):
     """Um valor que escapa da validação e bate num CHECK do banco devolve 409 em JSON."""
     a = _animal()
-    with patch("app.blueprints.animals.routes.require_choice", side_effect=lambda v, *a: v):
+    with patch("app.controllers.animals_controller.require_choice", side_effect=lambda v, *a: v):
         r = vol_client.patch(f"/api/animais/{a.id}", json={"porte": "Gigante"})
     assert r.status_code == 409 and r.get_json()["codigo"] == 409
     assert db.session.get(Animal, a.id).porte == "Médio"
