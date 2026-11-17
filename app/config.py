@@ -120,6 +120,9 @@ class ProductionConfig(Config):
     REMEMBER_COOKIE_HTTPONLY = True
     PREFERRED_URL_SCHEME = "https"
 
+    # Disco de produção é efêmero: fotos só podem ir para o Supabase Storage
+    REQUIRE_REMOTE_STORAGE = True
+
     # Funções serverless: poucas conexões por instância (o pooler do Supabase multiplexa o resto)
     SQLALCHEMY_ENGINE_OPTIONS = {
         **Config.SQLALCHEMY_ENGINE_OPTIONS,

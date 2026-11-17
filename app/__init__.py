@@ -21,7 +21,7 @@ def create_app(config_name=None):
         if problemas:
             raise RuntimeError("Configuração de produção incompleta: " + " ".join(problemas))
         if not (app.config.get("SUPABASE_URL") and app.config.get("SUPABASE_SERVICE_ROLE_KEY")):
-            app.logger.warning("Supabase Storage não configurado: fotos irão para disco temporário e serão perdidas.")
+            app.logger.warning("Supabase Storage não configurado: o envio de fotos ficará indisponível.")
         # A Vercel encerra o HTTPS e repassa protocolo/host/IP nos cabeçalhos X-Forwarded-*.
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
