@@ -1,4 +1,4 @@
-﻿from unittest.mock import patch
+from unittest.mock import patch
 
 from flask import g
 
@@ -6,7 +6,7 @@ from app.extensions import db
 from app.models.user import User
 from app.models.whitelist import Whitelist
 
-VERIFY = "app.blueprints.auth.routes.google_id_token.verify_oauth2_token"
+VERIFY = "app.controllers.auth_controller.google_id_token.verify_oauth2_token"
 
 
 def _claims(email, sub="g-123", verified=True):

@@ -1,7 +1,8 @@
 import json
 import os
 from flask import Flask, jsonify
-from .config import config_by_name
+from werkzeug.middleware.proxy_fix import ProxyFix
+from .config import ProductionConfig, config_by_name
 from .extensions import db, migrate, login_manager
 
 
@@ -11,7 +12,18 @@ def create_app(config_name=None):
         config_name = os.getenv("FLASK_ENV", "development")
 
     app = Flask(__name__)
-    app.config.from_object(config_by_name.get(config_name, config_by_name["default"]))
+    config_class = config_by_name.get(config_name, config_by_name["default"])
+    app.config.from_object(config_class)
+
+    if config_class is ProductionConfig:
+        # Falha cedo e com mensagem clara, em vez de subir com chave padrão ou sem banco.
+        problemas = ProductionConfig.problemas(app.config)
+        if problemas:
+            raise RuntimeError("Configuração de produção incompleta: " + " ".join(problemas))
+        if not (app.config.get("SUPABASE_URL") and app.config.get("SUPABASE_SERVICE_ROLE_KEY")):
+            app.logger.warning("Supabase Storage não configurado: o envio de fotos ficará indisponível.")
+        # A Vercel encerra o HTTPS e repassa protocolo/host/IP nos cabeçalhos X-Forwarded-*.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     # Inicializa extensões
     db.init_app(app)
@@ -27,22 +39,10 @@ def create_app(config_name=None):
     if upload_path:
         os.makedirs(upload_path, exist_ok=True)
 
-    # Registra Blueprints (Back-end)
-    from .blueprints.auth import auth_bp
-    from .blueprints.core import core_bp
-    from .blueprints.animals import animals_bp
-    from .blueprints.health import health_bp
-    from .blueprints.adoptions import adoptions_bp
-    from .blueprints.admin import admin_bp
-    from .blueprints.avisos import avisos_bp
+    # Registra os Controllers (Blueprints da API)
+    from .controllers import register_controllers
 
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(core_bp)
-    app.register_blueprint(animals_bp)
-    app.register_blueprint(health_bp)
-    app.register_blueprint(adoptions_bp)
-    app.register_blueprint(admin_bp)
-    app.register_blueprint(avisos_bp)
+    register_controllers(app)
 
     # RNF05/RN12: toda a API interna exige sessão ativa. A trava é central para que nenhuma rota
     # nova fique aberta por esquecimento. As rotas /auth/* ficam fora, pois fazem o próprio login.

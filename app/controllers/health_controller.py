@@ -1,17 +1,19 @@
-from flask import jsonify, request, Response
+from flask import Blueprint, jsonify, request, Response
 from flask_login import current_user
 from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.health import Vaccination, MedicalRecord, Prescription, MedicationLog
-from app.utils import ics, tempo
-from app.utils.audit import log_audit_event
-from app.utils.saude import (
+from app.services import ics
+from app.utils import tempo
+from app.services.audit import log_audit_event
+from app.services.saude import (
     find_dose_log, is_prescription_active, logs_by_prescription, open_booster_filter,
     prescription_dict, split_horarios, vaccine_dicts,
 )
 from app.utils.validation import ApiError, clean_text, get_payload, is_horario, model_text, parse_date
-from . import health_bp
+
+health_bp = Blueprint("health", __name__, url_prefix="/api/saude")
 
 
 def _normalizar_horarios(horarios):
