@@ -1,7 +1,8 @@
 import json
 import os
 from flask import Flask, jsonify
-from .config import config_by_name
+from werkzeug.middleware.proxy_fix import ProxyFix
+from .config import ProductionConfig, config_by_name
 from .extensions import db, migrate, login_manager
 
 
@@ -11,7 +12,18 @@ def create_app(config_name=None):
         config_name = os.getenv("FLASK_ENV", "development")
 
     app = Flask(__name__)
-    app.config.from_object(config_by_name.get(config_name, config_by_name["default"]))
+    config_class = config_by_name.get(config_name, config_by_name["default"])
+    app.config.from_object(config_class)
+
+    if config_class is ProductionConfig:
+        # Falha cedo e com mensagem clara, em vez de subir com chave padrão ou sem banco.
+        problemas = ProductionConfig.problemas(app.config)
+        if problemas:
+            raise RuntimeError("Configuração de produção incompleta: " + " ".join(problemas))
+        if not (app.config.get("SUPABASE_URL") and app.config.get("SUPABASE_SERVICE_ROLE_KEY")):
+            app.logger.warning("Supabase Storage não configurado: fotos irão para disco temporário e serão perdidas.")
+        # A Vercel encerra o HTTPS e repassa protocolo/host/IP nos cabeçalhos X-Forwarded-*.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     # Inicializa extensões
     db.init_app(app)
