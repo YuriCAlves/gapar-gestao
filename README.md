@@ -59,7 +59,7 @@ python -m venv .venv
 source .venv/bin/activate
 
 # Instalar dependências
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # runtime + testes
 ```
 
 ### 3. Configurar Variáveis de Ambiente
@@ -83,3 +83,9 @@ A API estará disponível em: `http://127.0.0.1:5000`
 - **RN05:** Animais nos status `adotado` ou `óbito` têm seus prontuários e cadastros congelados para edições.
 - **RN12/RN14:** Acesso fechado restrito a e-mails na Whitelist; desativação tem efeito imediato na próxima requisição.
 - **RN15:** Lista de pessoas não aptas a adotar é sigilosa e restrita exclusivamente à Administradora.
+
+---
+
+## 🚀 Deploy
+
+Vercel (SPA + função Python) com PostgreSQL e Storage do Supabase. Variáveis, Google OAuth e homologação: [`docs/DEPLOY.md`](docs/DEPLOY.md).

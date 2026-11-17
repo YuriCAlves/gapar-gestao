@@ -109,10 +109,38 @@ class TestingConfig(Config):
 
 
 class ProductionConfig(Config):
-    """Ambiente de Produção (PaaS / Linux)."""
+    """Ambiente de Produção (Vercel + Supabase)."""
     DEBUG = False
     TESTING = False
     SQLALCHEMY_DATABASE_URI = build_database_uri("gapar_prod.db")
+
+    # Atrás do HTTPS da Vercel: cookies só trafegam cifrados e URLs externas saem com https://
+    SESSION_COOKIE_SECURE = True
+    REMEMBER_COOKIE_SECURE = True
+    REMEMBER_COOKIE_HTTPONLY = True
+    PREFERRED_URL_SCHEME = "https"
+
+    # Funções serverless: poucas conexões por instância (o pooler do Supabase multiplexa o resto)
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        **Config.SQLALCHEMY_ENGINE_OPTIONS,
+        "pool_size": 2,
+        "max_overflow": 3,
+    }
+
+    @staticmethod
+    def problemas(config) -> list[str]:
+        """Configurações sem as quais a produção fica insegura ou quebrada (vazio = tudo certo)."""
+        erros = []
+        chave = config.get("SECRET_KEY") or ""
+        if not os.getenv("SECRET_KEY") or len(chave) < 32:
+            erros.append("SECRET_KEY ausente ou curta (mínimo de 32 caracteres aleatórios).")
+        if not str(config.get("SQLALCHEMY_DATABASE_URI", "")).startswith("postgresql"):
+            erros.append("DATABASE_URL ausente: produção exige o PostgreSQL do Supabase.")
+        if not (config.get("GOOGLE_CLIENT_ID") and config.get("GOOGLE_CLIENT_SECRET")):
+            erros.append("GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET ausentes: ninguém conseguiria entrar.")
+        if not os.getenv("INITIAL_ADMIN_EMAIL"):
+            erros.append("INITIAL_ADMIN_EMAIL ausente (RN13).")
+        return erros
 
 
 config_by_name = {
