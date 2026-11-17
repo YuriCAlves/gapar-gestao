@@ -1,12 +1,14 @@
-from datetime import datetime
 from flask_login import UserMixin
 from app.extensions import db, login_manager
-from flask import current_app
+from .base import utcnow, sql_in, PERFIS
 
 
 class User(UserMixin, db.Model):
     """Modelo de Usuária e controle de Whitelist (RF01, RF02, RF03, RF04, RN12, RN14)."""
     __tablename__ = "users"
+    __table_args__ = (
+        db.CheckConstraint(sql_in("role", PERFIS), name="ck_users_role"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
@@ -19,16 +21,39 @@ class User(UserMixin, db.Model):
     # Whitelist status (RN14: Se False, revoga imediatamente no próximo request)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     
-    # Tokens do Google criptografados (RNF08)
+    # Tokens do Google criptografados em repouso (RNF08)
     google_access_token = db.Column(db.Text, nullable=True)
     google_refresh_token = db.Column(db.Text, nullable=True)
     
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
     @property
     def is_admin(self):
         return self.role == "Administradora"
+
+    @property
+    def active(self):
+        """Compatibilidade para acessos como current_user.active."""
+        return self.is_active
+
+    def set_google_tokens(self, access_token=None, refresh_token=None):
+        """Cifra e armazena tokens no banco (RNF08)."""
+        from app.utils.crypto import encrypt_token
+        if access_token is not None:
+            self.google_access_token = encrypt_token(access_token)
+        if refresh_token is not None:
+            self.google_refresh_token = encrypt_token(refresh_token)
+
+    def get_decrypted_access_token(self):
+        """Retorna o access_token decifrado em memória (RNF08)."""
+        from app.utils.crypto import decrypt_token
+        return decrypt_token(self.google_access_token)
+
+    def get_decrypted_refresh_token(self):
+        """Retorna o refresh_token decifrado em memória (RNF08)."""
+        from app.utils.crypto import decrypt_token
+        return decrypt_token(self.google_refresh_token)
 
     def to_dict(self):
         return {
@@ -43,32 +68,34 @@ class User(UserMixin, db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    """Carrega a usuária e revalida sua autorização em cada request."""
+    """Carrega a usuária e revalida a Whitelist a cada requisição (RN12, RN14)."""
+    from flask import current_app
+    from app.models.whitelist import Whitelist
+
     try:
         user = db.session.get(User, int(user_id))
     except (ValueError, TypeError):
         return None
 
-    if not user or not user.is_active:
+    if not user:
+        return None
+    if not user.is_active:
+        from flask import g
+        g.acesso_revogado = True
         return None
 
-    admin_email = (
-        current_app.config.get("INITIAL_ADMIN_EMAIL") or ""
-    ).strip().lower()
-
-    if user.email.lower() == admin_email:
+    email = user.email.strip().lower()
+    admin_email = (current_app.config.get("INITIAL_ADMIN_EMAIL") or "").strip().lower()
+    if admin_email and email == admin_email:
         return user
 
-    # Importação local para evitar dependência circular.
-    from app.models.whitelist import Whitelist
-
-    authorization = Whitelist.query.filter_by(
-        email=user.email.lower(),
-        is_active=True
-    ).first()
-
-    if not authorization:
+    entry = Whitelist.query.filter_by(email=email, is_active=True).first()
+    if not entry:
+        # Sessão válida de alguém desativado na Whitelist: a trava central responde 403
+        # "Acesso revogado" (em vez de 401), para a tela explicar o motivo (RN14).
+        from flask import g
+        g.acesso_revogado = True
         return None
 
-    user.role = authorization.role
+    user.role = entry.role  # perfil sempre sincronizado com a Whitelist
     return user

@@ -1,10 +1,18 @@
-from datetime import datetime, date
+from datetime import date
 from app.extensions import db
+from .base import utcnow, proibir_exclusao_fisica
 
 
+@proibir_exclusao_fisica
 class Vaccination(db.Model):
-    """Cartão de Vacinação Digital (RF13)."""
+    """Cartão de Vacinação Digital (RF13). RN03: nunca é apagado fisicamente."""
     __tablename__ = "vaccinations"
+    __table_args__ = (
+        db.CheckConstraint(
+            "data_reforco IS NULL OR data_reforco >= data_aplicacao",
+            name="ck_vaccinations_reforco_apos_aplicacao",
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     animal_id = db.Column(db.Integer, db.ForeignKey("animals.id"), nullable=False, index=True)
@@ -14,8 +22,10 @@ class Vaccination(db.Model):
     data_aplicacao = db.Column(db.Date, nullable=False, default=date.today)
     data_reforco = db.Column(db.Date, nullable=True, index=True)
     observacoes = db.Column(db.Text, nullable=True)
+    aplicado_por_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    aplicado_por = db.relationship("User", foreign_keys=[aplicado_por_user_id])
     
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     def to_dict(self):
         return {
@@ -25,12 +35,14 @@ class Vaccination(db.Model):
             "lote": self.lote,
             "data_aplicacao": self.data_aplicacao.isoformat() if self.data_aplicacao else None,
             "data_reforco": self.data_reforco.isoformat() if self.data_reforco else None,
-            "observacoes": self.observacoes
+            "observacoes": self.observacoes,
+            "aplicado_por_user_id": self.aplicado_por_user_id
         }
 
 
+@proibir_exclusao_fisica
 class MedicalRecord(db.Model):
-    """Prontuário de Histórico Médico (RF14)."""
+    """Prontuário de Histórico Médico (RF14). RN03: nunca é apagado fisicamente."""
     __tablename__ = "medical_records"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -43,7 +55,10 @@ class MedicalRecord(db.Model):
     diagnostico = db.Column(db.Text, nullable=False)
     procedimentos_realizados = db.Column(db.Text, nullable=True)
     
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    cadastrado_por_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    cadastrado_por = db.relationship("User", foreign_keys=[cadastrado_por_user_id])
+    
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     def to_dict(self):
         return {
@@ -54,13 +69,19 @@ class MedicalRecord(db.Model):
             "veterinario_responsavel": self.veterinario_responsavel,
             "clinica": self.clinica,
             "diagnostico": self.diagnostico,
-            "procedimentos_realizados": self.procedimentos_realizados
+            "procedimentos_realizados": self.procedimentos_realizados,
+            "cadastrado_por_user_id": self.cadastrado_por_user_id
         }
 
 
 class Prescription(db.Model):
     """Prescrição de Medicações (RF15, RN08, RN09, RN10)."""
     __tablename__ = "prescriptions"
+    __table_args__ = (
+        db.CheckConstraint("data_fim >= data_inicio", name="ck_prescriptions_periodo"),
+        # Painel Hoje (RF23, RN09): prescrições vigentes (data_fim >= hoje AND data_inicio <= hoje)
+        db.Index("ix_prescriptions_vigencia", "data_fim", "data_inicio"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     animal_id = db.Column(db.Integer, db.ForeignKey("animals.id"), nullable=False, index=True)
@@ -72,10 +93,14 @@ class Prescription(db.Model):
     data_fim = db.Column(db.Date, nullable=False)
     instrucoes = db.Column(db.Text, nullable=True)
     
+    # Usuária/Profissional que cadastrou a prescrição
+    prescrito_por_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    prescrito_por = db.relationship("User", foreign_keys=[prescrito_por_user_id])
+
     # Sincronização Google Agenda (RF17, RN10)
     google_event_id = db.Column(db.String(150), nullable=True)
     
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     
     # Baixas diárias
     logs = db.relationship("MedicationLog", backref="prescription", lazy="dynamic", cascade="all, delete-orphan")
@@ -96,6 +121,7 @@ class Prescription(db.Model):
             "data_inicio": self.data_inicio.isoformat() if self.data_inicio else None,
             "data_fim": self.data_fim.isoformat() if self.data_fim else None,
             "instrucoes": self.instrucoes,
+            "prescrito_por_user_id": self.prescrito_por_user_id,
             "is_active": self.is_active,
             "google_event_id": self.google_event_id
         }
@@ -104,16 +130,25 @@ class Prescription(db.Model):
 class MedicationLog(db.Model):
     """Registro diário de cumprimento de medicação (RF16)."""
     __tablename__ = "medication_logs"
+    __table_args__ = (
+        # RF16: uma única baixa por dose (prescrição + dia + horário previsto), mesmo com
+        # requisições simultâneas. Uma segunda gravação gera IntegrityError.
+        db.UniqueConstraint(
+            "prescription_id", "data_aplicacao", "horario_previsto",
+            name="uq_medication_logs_dose",
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    prescription_id = db.Column(db.Integer, db.ForeignKey("prescriptions.id"), nullable=False, index=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
-    
+    prescription_id = db.Column(db.Integer, db.ForeignKey("prescriptions.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
     data_aplicacao = db.Column(db.Date, nullable=False, default=date.today, index=True)
-    horario_aplicado = db.Column(db.String(10), nullable=False) # Ex: "08:15"
+    horario_previsto = db.Column(db.String(10), nullable=True) # Ex: "08:00" (dose prescrita)
+    horario_aplicado = db.Column(db.String(10), nullable=False) # Ex: "08:15" (horário da baixa)
     observacoes = db.Column(db.Text, nullable=True)
     
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     def to_dict(self):
         return {
@@ -121,6 +156,7 @@ class MedicationLog(db.Model):
             "prescription_id": self.prescription_id,
             "user_id": self.user_id,
             "data_aplicacao": self.data_aplicacao.isoformat() if self.data_aplicacao else None,
+            "horario_previsto": self.horario_previsto,
             "horario_aplicado": self.horario_aplicado,
             "observacoes": self.observacoes,
             "created_at": self.created_at.isoformat()
