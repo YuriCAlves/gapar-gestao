@@ -31,6 +31,11 @@ def save_photo(conteudo: bytes, filename: str, content_type: str = "image/jpeg")
     """Grava a foto já comprimida e devolve a URL a guardar em `foto_url`."""
     if uses_supabase_storage():
         return _save_to_supabase(conteudo, filename, content_type)
+    if current_app.config.get("REQUIRE_REMOTE_STORAGE"):
+        # Na Vercel o disco é temporário e /static não chega ao Flask: a foto se perderia.
+        current_app.logger.error("Envio de foto recusado: Supabase Storage não configurado em produção.")
+        raise ApiError("Armazenamento de fotos indisponível", 503,
+                       "O envio de fotos ainda não foi configurado neste ambiente. Avise a administração.")
     return _save_to_disk(conteudo, filename)
 
 
