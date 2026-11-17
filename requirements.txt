@@ -1,39 +1,24 @@
-# Core Framework & Web
-Flask>=3.0.3
-Werkzeug>=3.0.3
+# Dependências de RUNTIME (instaladas na função Python da Vercel).
+# Ferramentas de teste/desenvolvimento ficam em requirements-dev.txt.
 
-# Database & ORM
-Flask-SQLAlchemy>=3.1.1
-Flask-Migrate>=4.0.7
-SQLAlchemy>=2.0.30
-pymysql>=1.1.0
-psycopg2-binary>=2.9.9
+# Web
+Flask>=3.0.3,<4
+Werkzeug>=3.0.3,<4
 
-# Authentication & Security
-Flask-Login>=0.6.3
-Flask-WTF>=1.2.1
-WTForms>=3.1.2
-email-validator>=2.1.1
-Authlib>=1.3.1
+# Banco de dados (PostgreSQL do Supabase) e migrações
+Flask-SQLAlchemy>=3.1.1,<4
+Flask-Migrate>=4.0.7,<5
+SQLAlchemy>=2.0.30,<3
+psycopg2-binary>=2.9.9,<3
+
+# Autenticação: sessão + validação do ID Token do Google (RF01) + tokens cifrados
+Flask-Login>=0.6.3,<0.7
+google-auth>=2.29.0,<3
 cryptography>=42.0.5
+requests>=2.31.0,<3
 
-# Google APIs & OAuth
-google-api-python-client>=2.128.0
-google-auth-oauthlib>=1.2.0
-google-auth-httplib2>=0.2.0
-requests>=2.31.0
-
-# Calendar & Reminders
-icalendar>=5.0.12
-
-# Image Processing (RF06 & RNF02: redimensionamento e compressão < 300KB)
+# Fotos: redimensionamento e compressão < 300 KB (RF06, RNF02)
 Pillow>=10.3.0
 
-# Environment & Utilities
-python-dotenv>=1.0.1
-
-# Production WSGI Server
-gunicorn>=22.0.0
-
-# Testing
-pytest>=8.2.0
+# Variáveis de ambiente (.env em desenvolvimento)
+python-dotenv>=1.0.1,<2

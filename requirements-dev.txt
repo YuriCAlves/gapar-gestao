@@ -1,0 +1,4 @@
+# Desenvolvimento e testes: pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8.2.0
+icalendar>=5.0.12  # usado nos testes para validar os arquivos .ics gerados

@@ -1,10 +1,11 @@
-from flask import jsonify
+from flask import Blueprint, jsonify
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.health import Prescription, Vaccination
 from app.utils import tempo
-from app.utils.saude import logs_by_prescription, open_booster_filter, split_horarios
-from . import core_bp
+from app.services.saude import logs_by_prescription, open_booster_filter, split_horarios
+
+core_bp = Blueprint("core", __name__)
 
 
 @core_bp.route("/", methods=["GET"])
