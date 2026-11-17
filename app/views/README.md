@@ -1,10 +1,8 @@
-# Camada View (MVC)
+# app/views — a camada View
 
-SPA em React + TypeScript (Vite + Tailwind) que consome a API JSON servida pelos controllers.
+A interface do GAPAR Gestão: uma SPA em React + TypeScript (Vite + Tailwind CSS 4), pensada
+para o celular. As decisões de design, a lista de telas e a organização das pastas estão no
+[README principal](../../README.md#-front-end-a-camada-view).
 
-- `index.html` — ponto de entrada do Vite
-- `public/` — arquivos estáticos copiados como estão para o build
-- `src/` — código da interface (`pages/`, `components/`, `contexts/`, `hooks/`, `api/`, `utils/`, `types/`)
-
-Os comandos (`npm run dev`, `npm run build`, `npm test`) continuam sendo executados na raiz do
-repositório; o `vite.config.ts` aponta a raiz do Vite para esta pasta e gera o build em `/dist`.
+Os comandos (`npm run dev`, `npm run build`, `npm test`) são executados **na raiz** do
+repositório: o `vite.config.ts` aponta a raiz do Vite para esta pasta e gera o build em `/dist`.
