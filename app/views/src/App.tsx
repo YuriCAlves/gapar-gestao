@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { AvisosProvider } from "./contexts/AvisosContext";
+import { FlagsProvider, RotaComFlag } from "./contexts/FlagsContext";
 import { Layout } from "./components/Layout";
 import { LayoutPublico } from "./components/LayoutPublico";
 import { Carregando, EstadoErro } from "./components/Estados";
@@ -97,53 +98,83 @@ function Inicio() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AvisosProvider>
-        <Suspense
-          fallback={
-            <TelaCheia>
-              <Carregando />
-            </TelaCheia>
-          }
-        >
-          <Routes>
-            {/* Rotas públicas: fora do AuthContext, sem chamada a /auth/* */}
-            <Route element={<LayoutPublico />}>
-              <Route path="/privacidade" element={<PrivacidadePage />} />
-              <Route path="/adote" element={<EmBrevePublicoPage titulo="Vitrine de adoção" />} />
-              <Route path="/adote/:slug" element={<EmBrevePublicoPage titulo="Vitrine de adoção" />} />
-              <Route path="/termo/:token" element={<EmBrevePublicoPage titulo="Termo de adoção digital" />} />
-              <Route path="/carteira/:token" element={<EmBrevePublicoPage titulo="Carteira de vacinas" />} />
-            </Route>
-
-            {/* Rotas internas: com sessão Google + Whitelist */}
-            <Route element={<AreaInterna />}>
-              <Route path="/entrar" element={<LoginPage />} />
-              <Route
-                element={
-                  <RotaProtegida>
-                    <Layout />
-                  </RotaProtegida>
-                }
-              >
-                <Route path="/" element={<Inicio />} />
-                <Route path="/hoje" element={<HojePage />} />
-                <Route path="/animais" element={<AnimaisPage />} />
-                <Route path="/animais/novo" element={<AnimalNovoPage />} />
-                <Route path="/animais/:id" element={<AnimalFichaPage />} />
+      <FlagsProvider>
+        <AvisosProvider>
+          <Suspense
+            fallback={
+              <TelaCheia>
+                <Carregando />
+              </TelaCheia>
+            }
+          >
+            <Routes>
+              {/* Rotas públicas: fora do AuthContext, sem chamada a /auth/* */}
+              <Route element={<LayoutPublico />}>
+                <Route path="/privacidade" element={<PrivacidadePage />} />
                 <Route
-                  path="/admin"
+                  path="/adote"
                   element={
-                    <RotaProtegida somenteAdministradora>
-                      <AdminPage />
-                    </RotaProtegida>
+                    <RotaComFlag flag="vitrine" publica>
+                      <EmBrevePublicoPage titulo="Vitrine de adoção" />
+                    </RotaComFlag>
                   }
                 />
-                <Route path="*" element={<NaoEncontradaPage />} />
+                <Route
+                  path="/adote/:slug"
+                  element={
+                    <RotaComFlag flag="vitrine" publica>
+                      <EmBrevePublicoPage titulo="Vitrine de adoção" />
+                    </RotaComFlag>
+                  }
+                />
+                <Route
+                  path="/termo/:token"
+                  element={
+                    <RotaComFlag flag="termo_digital" publica>
+                      <EmBrevePublicoPage titulo="Termo de adoção digital" />
+                    </RotaComFlag>
+                  }
+                />
+                <Route
+                  path="/carteira/:token"
+                  element={
+                    <RotaComFlag flag="carteira" publica>
+                      <EmBrevePublicoPage titulo="Carteira de vacinas" />
+                    </RotaComFlag>
+                  }
+                />
               </Route>
-            </Route>
-          </Routes>
-        </Suspense>
-      </AvisosProvider>
+
+              {/* Rotas internas: com sessão Google + Whitelist */}
+              <Route element={<AreaInterna />}>
+                <Route path="/entrar" element={<LoginPage />} />
+                <Route
+                  element={
+                    <RotaProtegida>
+                      <Layout />
+                    </RotaProtegida>
+                  }
+                >
+                  <Route path="/" element={<Inicio />} />
+                  <Route path="/hoje" element={<HojePage />} />
+                  <Route path="/animais" element={<AnimaisPage />} />
+                  <Route path="/animais/novo" element={<AnimalNovoPage />} />
+                  <Route path="/animais/:id" element={<AnimalFichaPage />} />
+                  <Route
+                    path="/admin"
+                    element={
+                      <RotaProtegida somenteAdministradora>
+                        <AdminPage />
+                      </RotaProtegida>
+                    }
+                  />
+                  <Route path="*" element={<NaoEncontradaPage />} />
+                </Route>
+              </Route>
+            </Routes>
+          </Suspense>
+        </AvisosProvider>
+      </FlagsProvider>
     </BrowserRouter>
   );
 }

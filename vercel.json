@@ -4,6 +4,11 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "git": {
+    "deploymentEnabled": {
+      "feat/cp01-nucleo": false
+    }
+  },
   "functions": {
     "api/index.py": {
       "maxDuration": 30,

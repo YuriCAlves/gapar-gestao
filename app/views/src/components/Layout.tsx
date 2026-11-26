@@ -1,8 +1,21 @@
 import { useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { Confirmacao } from "./Dialogo";
-import { IconeAdmin, IconeHoje, IconeMais, IconePata, IconeSair } from "./Icones";
+import { useFlags } from "../contexts/FlagsContext";
+import type { FlagPublica } from "../types/contratos";
+import { Confirmacao, Dialogo } from "./Dialogo";
+import {
+  IconeAdmin,
+  IconeCoracao,
+  IconeHoje,
+  IconeInfo,
+  IconeLocal,
+  IconeMais,
+  IconeMenu,
+  IconePata,
+  IconeRemedio,
+  IconeSair,
+} from "./Icones";
 
 interface ItemDeNavegacao {
   para: string;
@@ -10,6 +23,22 @@ interface ItemDeNavegacao {
   icone: JSX.Element;
   fim?: boolean;
 }
+
+interface ItemDaGaveta {
+  para: string;
+  rotulo: string;
+  descricao: string;
+  icone: JSX.Element;
+  flag?: FlagPublica;
+  somenteAdmin?: boolean;
+}
+
+const ITENS_FUTUROS_GAVETA: ItemDaGaveta[] = [
+  { para: "/estoque", rotulo: "Estoque", descricao: "Vacinas, remédios e alertas de validade", icone: <IconeRemedio />, flag: "estoque" },
+  { para: "/candidaturas", rotulo: "Candidaturas", descricao: "Pedidos de adoção vindos da vitrine", icone: <IconeCoracao />, flag: "candidaturas" },
+  { para: "/mapa", rotulo: "Mapa de resgates", descricao: "Origem dos resgates por bairro", icone: <IconeLocal />, flag: "mapa", somenteAdmin: true },
+  { para: "/adote", rotulo: "Vitrine pública", descricao: "Ver a página aberta de adoção", icone: <IconePata />, flag: "vitrine" },
+];
 
 function rotuloDoPerfil(perfil: string): string {
   return perfil === "Administradora" ? "Administradora" : "Voluntária";
@@ -20,9 +49,11 @@ function primeiroNome(nome: string | null, email: string): string {
   return base.split(/\s+/)[0];
 }
 
-/** Estrutura das telas internas: cabeçalho, conteúdo e navegação ao alcance do polegar. */
+/** Estrutura das telas internas: cabeçalho, conteúdo, 4 abas e gaveta "Mais" ao alcance do polegar. */
 export function Layout() {
   const { usuario, ehAdministradora, sair } = useAuth();
+  const { ativa } = useFlags();
+  const [gavetaAberta, setGavetaAberta] = useState(false);
   const [confirmandoSaida, setConfirmandoSaida] = useState(false);
   const [saindo, setSaindo] = useState(false);
 
@@ -32,6 +63,10 @@ export function Layout() {
     { para: "/animais/novo", rotulo: "Resgate", icone: <IconeMais /> },
   ];
   if (ehAdministradora) itens.push({ para: "/admin", rotulo: "Gestão", icone: <IconeAdmin /> });
+
+  const extrasAtivos = ITENS_FUTUROS_GAVETA.filter(
+    (item) => (!item.flag || ativa(item.flag)) && (!item.somenteAdmin || ehAdministradora),
+  );
 
   if (!usuario) return null;
 
@@ -72,6 +107,20 @@ export function Layout() {
                 {item.rotulo}
               </NavLink>
             ))}
+            {extrasAtivos.map((item) => (
+              <NavLink
+                key={item.para}
+                to={item.para}
+                className={({ isActive }) =>
+                  `flex min-h-11 items-center gap-2 rounded-xl px-3.5 font-bold transition-colors ${
+                    isActive ? "bg-mata-700 text-white" : "text-tinta-700 hover:bg-mata-50"
+                  }`
+                }
+              >
+                {item.icone}
+                {item.rotulo}
+              </NavLink>
+            ))}
           </nav>
 
           <div className="ml-auto flex min-w-0 items-center gap-2">
@@ -98,7 +147,7 @@ export function Layout() {
         <Outlet />
       </main>
 
-      {/* Barra inferior no celular: alvos grandes, ao alcance do polegar */}
+      {/* Barra inferior no celular: 4 abas mantidas + gaveta "Mais", ao alcance do polegar em 360px */}
       <nav
         aria-label="Principal"
         className="pb-segura fixed inset-x-0 bottom-0 z-40 border-t border-creme-200 bg-white/95 backdrop-blur md:hidden"
@@ -110,7 +159,7 @@ export function Layout() {
                 to={item.para}
                 end={item.fim}
                 className={({ isActive }) =>
-                  `flex min-h-16 flex-col items-center justify-center gap-0.5 text-sm font-bold ${
+                  `flex min-h-16 flex-col items-center justify-center gap-0.5 text-xs font-bold min-[380px]:text-sm ${
                     isActive ? "text-mata-800" : "text-tinta-500"
                   }`
                 }
@@ -118,7 +167,7 @@ export function Layout() {
                 {({ isActive }) => (
                   <>
                     <span
-                      className={`grid h-8 w-14 place-items-center rounded-full transition-colors ${isActive ? "bg-mata-100" : ""}`}
+                      className={`grid h-8 w-12 place-items-center rounded-full transition-colors min-[380px]:w-14 ${isActive ? "bg-mata-100" : ""}`}
                     >
                       {item.icone}
                     </span>
@@ -128,8 +177,95 @@ export function Layout() {
               </NavLink>
             </li>
           ))}
+          <li className="flex-1">
+            <button
+              type="button"
+              onClick={() => setGavetaAberta(true)}
+              aria-expanded={gavetaAberta}
+              aria-haspopup="dialog"
+              className={`flex min-h-16 w-full flex-col items-center justify-center gap-0.5 text-xs font-bold min-[380px]:text-sm ${
+                gavetaAberta ? "text-mata-800" : "text-tinta-500"
+              }`}
+            >
+              <span
+                className={`grid h-8 w-12 place-items-center rounded-full transition-colors min-[380px]:w-14 ${gavetaAberta ? "bg-mata-100" : ""}`}
+              >
+                <IconeMenu />
+              </span>
+              Mais
+            </button>
+          </li>
         </ul>
       </nav>
+
+      {/* Gaveta "Mais" (folha inferior com botões min-h-14) */}
+      <Dialogo aberto={gavetaAberta} aoFechar={() => setGavetaAberta(false)} titulo="Mais opções">
+        <div className="space-y-2">
+          {extrasAtivos.map((item) => (
+            <Link
+              key={item.para}
+              to={item.para}
+              onClick={() => setGavetaAberta(false)}
+              className="flex min-h-14 items-center gap-3 rounded-xl border border-creme-200 bg-white px-4 py-2.5 text-left transition-colors hover:bg-mata-50"
+            >
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-mata-50 text-mata-700" aria-hidden="true">
+                {item.icone}
+              </span>
+              <span className="min-w-0">
+                <span className="block font-extrabold text-tinta-900">{item.rotulo}</span>
+                <span className="block text-sm text-tinta-700">{item.descricao}</span>
+              </span>
+            </Link>
+          ))}
+
+          {ehAdministradora && (
+            <Link
+              to="/admin"
+              onClick={() => setGavetaAberta(false)}
+              className="flex min-h-14 items-center gap-3 rounded-xl border border-creme-200 bg-white px-4 py-2.5 text-left transition-colors hover:bg-mata-50"
+            >
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-barro-50 text-barro-700" aria-hidden="true">
+                <IconeAdmin />
+              </span>
+              <span className="min-w-0">
+                <span className="block font-extrabold text-tinta-900">Gestão</span>
+                <span className="block text-sm text-tinta-700">Pessoas autorizadas, lista sigilosa e histórico</span>
+              </span>
+            </Link>
+          )}
+
+          <Link
+            to="/privacidade"
+            onClick={() => setGavetaAberta(false)}
+            className="flex min-h-14 items-center gap-3 rounded-xl border border-creme-200 bg-white px-4 py-2.5 text-left transition-colors hover:bg-mata-50"
+          >
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-creme-100 text-tinta-700" aria-hidden="true">
+              <IconeInfo />
+            </span>
+            <span className="min-w-0">
+              <span className="block font-extrabold text-tinta-900">Política de Privacidade</span>
+              <span className="block text-sm text-tinta-700">Como a ONG GAPAR protege dados pessoais</span>
+            </span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => {
+              setGavetaAberta(false);
+              setConfirmandoSaida(true);
+            }}
+            className="flex min-h-14 w-full items-center gap-3 rounded-xl border border-perigo-100 bg-white px-4 py-2.5 text-left transition-colors hover:bg-perigo-100/40"
+          >
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-perigo-100 text-perigo-700" aria-hidden="true">
+              <IconeSair />
+            </span>
+            <span className="min-w-0">
+              <span className="block font-extrabold text-perigo-700">Sair do sistema</span>
+              <span className="block text-sm text-tinta-700">Encerrar sua sessão neste aparelho</span>
+            </span>
+          </button>
+        </div>
+      </Dialogo>
 
       <Confirmacao
         aberta={confirmandoSaida}

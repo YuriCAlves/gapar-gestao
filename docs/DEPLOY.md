@@ -40,7 +40,7 @@ Sem as obrigatórias, a função **não sobe** e o log mostra exatamente o que f
 > Trocar o `SECRET_KEY` invalida as sessões abertas e os tokens do Google já guardados
 > (as pessoas só precisam entrar de novo).
 >
-> **Atenção crítica sobre `PII_FERNET_KEYS`:** guarde uma cópia segura dessa chave fora da Vercel (cofre de senhas da ONG). **Perder a `PII_FERNET_KEYS` torna os CPFs (e demais dados cifrados) ilegíveis para sempre.** Para rotacionar com segurança, adicione a nova chave **antes** da antiga separada por vírgula (`nova,antiga`) até regravar os registros.
+> **Atenção crítica sobre `PII_FERNET_KEYS`:** guarde uma cópia segura dessa chave fora da Vercel (cofre de senhas da ONG). **Perder a `PII_FERNET_KEYS` torna os CPFs (e demais dados cifrados) ilegíveis para sempre.** Para rotacionar com segurança, adicione a nova chave **antes** da antiga separada por vírgula (`nova,antiga`); a regravação é feita pelo comando de rotação (`flask pii-rotate`, a ser entregue) — não remova a chave antiga antes disso.
 
 ## 2. Google Cloud Console
 

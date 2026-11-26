@@ -42,11 +42,24 @@ export function cpfValido(valor: string): boolean {
 }
 
 /**
+ * Extrai os dígitos de um telefone brasileiro (máx. 11).
+ * Quando vier colado com DDI 55 (12 ou 13 dígitos começando por "55"), descarta o DDI.
+ */
+export function normalizarDigitosTelefone(valor: string): string {
+  const digitos = soDigitos(valor);
+  if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith("55")) {
+    return digitos.slice(2);
+  }
+  return digitos.slice(0, LIMITE_DIGITOS);
+}
+
+/**
  * Formata progressivamente um telefone brasileiro (máx. 11 dígitos):
  * 10 dígitos: (00) 0000-0000 | 11 dígitos: (00) 00000-0000
+ * Colagens com DDI +55 (12–13 dígitos) têm o DDI descartado automaticamente.
  */
 export function mascararTelefone(valor: string): string {
-  const digitos = soDigitos(valor).slice(0, LIMITE_DIGITOS);
+  const digitos = normalizarDigitosTelefone(valor);
   if (digitos.length === 0) return "";
   if (digitos.length <= 2) return `(${digitos}`;
   if (digitos.length <= 6) return `(${digitos.slice(0, 2)}) ${digitos.slice(2)}`;

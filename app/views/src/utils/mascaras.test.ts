@@ -7,6 +7,7 @@ import {
   mascararTelefone,
   mensagemErroCpf,
   mensagemErroTelefone,
+  normalizarDigitosTelefone,
   posicaoCursorNaMascara,
   soDigitos,
   telefoneValido,
@@ -41,8 +42,10 @@ describe("mascararCpf", () => {
     }
   });
 
-  it("aceita colar valor já formatado ou com letras e limita a 11 dígitos", () => {
+  it("aceita colar valor já formatado ou com prefixo/letras e limita a 11 dígitos", () => {
     expect(mascararCpf("123.456.789-09")).toBe("123.456.789-09");
+    expect(soDigitos("CPF: 529.982.247-25").slice(0, 11)).toBe("52998224725");
+    expect(mascararCpf("CPF: 529.982.247-25")).toBe("529.982.247-25");
     expect(mascararCpf("CPF: 123a456b789c09")).toBe("123.456.789-09");
     expect(mascararCpf("123456789099999")).toBe("123.456.789-09");
   });
@@ -92,8 +95,12 @@ describe("mascararTelefone", () => {
     }
   });
 
-  it("aceita colar formatado, ignora letras e limita a 11 dígitos", () => {
+  it("aceita colar formatado, descarta DDI +55 do WhatsApp, ignora letras e limita a 11 dígitos", () => {
     expect(mascararTelefone("(41) 98765-4321")).toBe("(41) 98765-4321");
+    expect(normalizarDigitosTelefone("+55 (41) 99999-8888")).toBe("41999998888");
+    expect(mascararTelefone("+55 (41) 99999-8888")).toBe("(41) 99999-8888");
+    expect(normalizarDigitosTelefone("+55 (41) 3222-3344")).toBe("4132223344");
+    expect(mascararTelefone("+55 (41) 3222-3344")).toBe("(41) 3222-3344");
     expect(mascararTelefone("tel: 41abc98765def4321")).toBe("(41) 98765-4321");
     expect(mascararTelefone("419876543219999")).toBe("(41) 98765-4321");
   });

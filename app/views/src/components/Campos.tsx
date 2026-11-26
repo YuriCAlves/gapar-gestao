@@ -15,6 +15,7 @@ import {
   mascararTelefone,
   mensagemErroCpf,
   mensagemErroTelefone,
+  normalizarDigitosTelefone,
   posicaoCursorNaMascara,
   soDigitos,
 } from "../utils/mascaras";
@@ -112,8 +113,8 @@ export interface PropsCampoMascarado
 interface ConfigCampoMascarado {
   type: "text" | "tel";
   inputMode: "numeric" | "tel";
-  maxLength: number;
   placeholderPadrao: string;
+  normalizarDigitos: (bruto: string, anterior: string) => string;
   mascarar: (valor: string) => string;
   validarNoBlur: (digitos: string, obrigatorio?: boolean) => string | null;
 }
@@ -192,8 +193,12 @@ function CampoMascarado({
   function aoMudar(evento: ChangeEvent<HTMLInputElement>) {
     const bruto = evento.target.value;
     const selecao = evento.target.selectionStart ?? bruto.length;
-    const digitosAntes = soDigitos(bruto.slice(0, selecao)).length;
-    atualizarComCursor(soDigitos(bruto), digitosAntes);
+    const todosDigitos = soDigitos(bruto);
+    const normalizados = config.normalizarDigitos(bruto, digitosAtuais);
+    const ddiRemovido = todosDigitos.length - normalizados.length === 2 && todosDigitos.startsWith("55") && normalizados === todosDigitos.slice(2);
+    const digitosAntesBruto = soDigitos(bruto.slice(0, selecao)).length;
+    const digitosAntes = ddiRemovido ? Math.max(0, digitosAntesBruto - 2) : digitosAntesBruto;
+    atualizarComCursor(normalizados, digitosAntes);
   }
 
   function aoSair(evento: FocusEvent<HTMLInputElement>) {
@@ -211,7 +216,6 @@ function CampoMascarado({
       type={config.type}
       inputMode={config.inputMode}
       autoComplete="off"
-      maxLength={config.maxLength}
       placeholder={placeholder ?? config.placeholderPadrao}
       obrigatorio={obrigatorio}
       value={exibido}
@@ -227,8 +231,8 @@ function CampoMascarado({
 const CONFIG_CPF: ConfigCampoMascarado = {
   type: "text",
   inputMode: "numeric",
-  maxLength: 14,
   placeholderPadrao: "000.000.000-00",
+  normalizarDigitos: (bruto) => soDigitos(bruto).slice(0, 11),
   mascarar: mascararCpf,
   validarNoBlur: mensagemErroCpf,
 };
@@ -236,8 +240,15 @@ const CONFIG_CPF: ConfigCampoMascarado = {
 const CONFIG_TELEFONE: ConfigCampoMascarado = {
   type: "tel",
   inputMode: "tel",
-  maxLength: 15,
   placeholderPadrao: "(00) 00000-0000",
+  normalizarDigitos: (bruto, anterior) => {
+    const todos = soDigitos(bruto);
+    // Evita remover o DDD 55 quando a pessoa já digitou 11 dígitos e apertou só 1 tecla extra.
+    if (anterior.length === 11 && todos.length === 12 && todos.startsWith(anterior)) {
+      return anterior;
+    }
+    return normalizarDigitosTelefone(bruto);
+  },
   mascarar: mascararTelefone,
   validarNoBlur: mensagemErroTelefone,
 };

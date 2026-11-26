@@ -259,3 +259,11 @@ export function IconeAtualizar(props: PropsDoIcone) {
     </Base>
   );
 }
+
+export function IconeMenu(props: PropsDoIcone) {
+  return (
+    <Base {...props}>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </Base>
+  );
+}

@@ -192,11 +192,17 @@ function NaoAptos() {
 
   const lista = useCarregar(
     (sinal) => {
-      if (cpfPronto) return listarNaoAptos({ cpf: cpfPronto }, sinal);
-      if (telefonePronto) return listarNaoAptos({ telefone: telefonePronto }, sinal);
+      if (tipoBusca === "cpf") {
+        if (!cpfPronto) return Promise.resolve([]);
+        return listarNaoAptos({ cpf: cpfPronto }, sinal);
+      }
+      if (tipoBusca === "telefone") {
+        if (!telefonePronto) return Promise.resolve([]);
+        return listarNaoAptos({ telefone: telefonePronto }, sinal);
+      }
       return listarNaoAptos({}, sinal);
     },
-    [cpfPronto, telefonePronto],
+    [tipoBusca, cpfPronto, telefonePronto],
   );
   const [aberto, setAberto] = useState(false);
   const [form, setForm] = useState({ nome: "", cpf: "", telefone: "", motivo_impedimento: "" });
@@ -315,7 +321,11 @@ function NaoAptos() {
         </div>
       </div>
 
-      {lista.erro && !lista.dados ? (
+      {aguardandoNumeroCompleto ? (
+        <Aviso tipo="informacao">
+          {tipoBusca === "cpf" ? "Digite o CPF completo para procurar." : "Digite o telefone completo com DDD para procurar."}
+        </Aviso>
+      ) : lista.erro && !lista.dados ? (
         <EstadoErro mensagem={lista.erro} aoTentarDeNovo={lista.recarregar} />
       ) : !lista.dados ? (
         <Esqueleto className="h-40" />
