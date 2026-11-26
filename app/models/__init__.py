@@ -6,6 +6,7 @@ from .blacklist import NonEligiblePerson
 from .audit import AuditLog
 from .announcement import Announcement, AnnouncementAck
 from .whitelist import Whitelist
+from .rate_limit import RateLimitBucket
 from .base import ExclusaoFisicaProibida, AuditoriaImutavel
 
 __all__ = [
@@ -23,4 +24,5 @@ __all__ = [
     "AuditLog",
     "Announcement",
     "AnnouncementAck",
+    "RateLimitBucket",
 ]

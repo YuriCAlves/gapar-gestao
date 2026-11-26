@@ -32,8 +32,28 @@ export async function definirAcesso(id: number, ativo: boolean): Promise<PessoaA
   return resposta.usuario;
 }
 
-export async function listarNaoAptos(sinal?: AbortSignal): Promise<PessoaNaoApta[]> {
-  const resposta = await requisitar<{ nao_aptos: PessoaNaoApta[] }>("/api/admin/nao-aptos", { sinal });
+export interface FiltrosNaoAptos {
+  cpf?: string;
+  telefone?: string;
+}
+
+function ehAbortSignal(valor: FiltrosNaoAptos | AbortSignal | undefined): valor is AbortSignal {
+  return typeof AbortSignal !== "undefined" && valor instanceof AbortSignal;
+}
+
+export async function listarNaoAptos(
+  filtrosOrSinal?: FiltrosNaoAptos | AbortSignal,
+  sinalOpcional?: AbortSignal,
+): Promise<PessoaNaoApta[]> {
+  const filtros = ehAbortSignal(filtrosOrSinal) ? undefined : filtrosOrSinal;
+  const sinal = ehAbortSignal(filtrosOrSinal) ? filtrosOrSinal : sinalOpcional;
+  const consulta: Record<string, string> = {};
+  if (filtros?.cpf) consulta.cpf = filtros.cpf;
+  if (filtros?.telefone) consulta.telefone = filtros.telefone;
+  const resposta = await requisitar<{ nao_aptos: PessoaNaoApta[] }>("/api/admin/nao-aptos", {
+    sinal,
+    consulta: Object.keys(consulta).length > 0 ? consulta : undefined,
+  });
   return resposta.nao_aptos;
 }
 

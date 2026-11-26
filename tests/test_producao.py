@@ -20,6 +20,8 @@ def producao_valida(monkeypatch):
     monkeypatch.setattr(ProductionConfig, "GOOGLE_CLIENT_SECRET", "segredo")
     monkeypatch.setattr(ProductionConfig, "UPLOAD_FOLDER", "")
     monkeypatch.setattr(ProductionConfig, "PUBLIC_BASE_URL", "")
+    monkeypatch.setattr(ProductionConfig, "PII_FERNET_KEYS", "dGVzdGUtZ2FwYXItY2hhdmUtcGlpLTMyLWJ5dGVzISE=")
+    monkeypatch.setattr(ProductionConfig, "PII_HMAC_KEY", "h" * 40)
 
 
 def test_producao_completa_sobe_segura(producao_valida):
@@ -36,6 +38,18 @@ def test_producao_completa_sobe_segura(producao_valida):
     (lambda mp: mp.setattr(ProductionConfig, "SQLALCHEMY_DATABASE_URI", "sqlite:///gapar_prod.db"), "DATABASE_URL"),
     (lambda mp: mp.setattr(ProductionConfig, "GOOGLE_CLIENT_SECRET", ""), "GOOGLE_CLIENT"),
     (lambda mp: mp.delenv("INITIAL_ADMIN_EMAIL"), "INITIAL_ADMIN_EMAIL"),
+    # CP-01 (REQ-12): sem chaves PII válidas a produção não sobe
+    (lambda mp: mp.setattr(ProductionConfig, "PII_FERNET_KEYS", ""), "PII_FERNET_KEYS"),
+    (lambda mp: mp.setattr(ProductionConfig, "PII_FERNET_KEYS", "nao-e-uma-chave-fernet"), "PII_FERNET_KEYS"),
+    (lambda mp: mp.setattr(ProductionConfig, "PII_HMAC_KEY", "curta"), "PII_HMAC_KEY"),
+    # Valores copiados do .env.example nunca sobem em produção
+    (lambda mp: mp.setattr(ProductionConfig, "PII_HMAC_KEY",
+                           "substitua-por-segredo-aleatorio-minimo-32-caracteres"), "PII_HMAC_KEY"),
+    (lambda mp: (mp.setenv("SECRET_KEY", "chave-secreta-forte-aleatoria-gapar-2026"),
+                 mp.setattr(ProductionConfig, "SECRET_KEY", "chave-secreta-forte-aleatoria-gapar-2026")),
+     "SECRET_KEY"),
+    (lambda mp: mp.setattr(ProductionConfig, "TURNSTILE_SECRET_KEY", "1x0000000000000000000000000000000AA"),
+     "TURNSTILE_SECRET_KEY"),
 ])
 def test_producao_incompleta_falha_cedo(producao_valida, monkeypatch, ajuste, trecho):
     ajuste(monkeypatch)

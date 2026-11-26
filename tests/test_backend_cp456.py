@@ -295,9 +295,12 @@ def test_nao_aptos_validacao(admin_client, payload):
 
 
 def test_nao_aptos_busca(admin_client):
-    admin_client.post("/api/admin/nao-aptos", json={"nome": "Marcio", "motivo_impedimento": "x", "cpf": "999.888.777-66"})
+    admin_client.post("/api/admin/nao-aptos", json={"nome": "Marcio", "motivo_impedimento": "x", "cpf": "999.888.777-14"})
     assert admin_client.get("/api/admin/nao-aptos?q=marc").get_json()["total"] == 1
-    assert admin_client.get("/api/admin/nao-aptos?q=999.888").get_json()["total"] == 1
+    # D2: CPF só com o número completo; pedaço de CPF no `q` não encontra mais nada
+    assert admin_client.get("/api/admin/nao-aptos?cpf=99988877714").get_json()["total"] == 1
+    assert admin_client.get("/api/admin/nao-aptos?q=999.888").get_json()["total"] == 0
+    assert admin_client.get("/api/admin/nao-aptos?cpf=999.888").status_code == 400
     assert admin_client.get("/api/admin/nao-aptos?q=zzz").get_json()["total"] == 0
 
 

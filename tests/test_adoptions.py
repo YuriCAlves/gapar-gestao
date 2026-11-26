@@ -25,7 +25,7 @@ def test_adocao_sucesso_e_congelamento_rn04_rn05(vol_client, app):
     payload = {
         "adotante_nome": "Carlos Adotante",
         "adotante_telefone": "41987654321",
-        "adotante_cpf": "123.456.789-00",
+        "adotante_cpf": "123.456.789-09",
         "data_adocao": date.today().isoformat(),
         "termo_assinado": True
     }
@@ -46,7 +46,7 @@ def test_bloqueio_adocao_pessoa_nao_apta_rn15(vol_client, app):
         # Cria pessoa na lista sigilosa
         bloqueado = NonEligiblePerson(
             nome="Marcio Inapto",
-            cpf="999.888.777-66",
+            cpf="999.888.777-14",
             telefone="41999998888",
             motivo_impedimento="Maus tratos"
         )
@@ -67,7 +67,7 @@ def test_bloqueio_adocao_pessoa_nao_apta_rn15(vol_client, app):
     payload = {
         "adotante_nome": "Marcio Qualquer",
         "adotante_telefone": "41911112222",
-        "adotante_cpf": "999.888.777-66",
+        "adotante_cpf": "999.888.777-14",
         "data_adocao": date.today().isoformat()
     }
     resp = vol_client.post(f"/api/adocoes/{animal_id}", json=payload)

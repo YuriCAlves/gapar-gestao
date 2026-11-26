@@ -1,9 +1,10 @@
 import { lazy, Suspense, useEffect } from "react";
 import type { ReactNode } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { AvisosProvider } from "./contexts/AvisosContext";
 import { Layout } from "./components/Layout";
+import { LayoutPublico } from "./components/LayoutPublico";
 import { Carregando, EstadoErro } from "./components/Estados";
 import { Botao } from "./components/Botao";
 import LoginPage from "./pages/LoginPage";
@@ -11,13 +12,24 @@ import HojePage from "./pages/HojePage";
 import AnimaisPage from "./pages/AnimaisPage";
 import NaoEncontradaPage from "./pages/NaoEncontradaPage";
 
-// Telas menos usadas no dia a dia carregam só quando abertas (economia de dados móveis).
+// Telas menos usadas no dia a dia e páginas públicas carregam só quando abertas (economia de dados móveis).
 const AnimalNovoPage = lazy(() => import("./pages/AnimalNovoPage"));
 const AnimalFichaPage = lazy(() => import("./pages/AnimalFichaPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
+const PrivacidadePage = lazy(() => import("./pages/publico/PrivacidadePage"));
+const EmBrevePublicoPage = lazy(() => import("./pages/publico/EmBrevePublicoPage"));
 
 function TelaCheia({ children }: { children: ReactNode }) {
   return <div className="grid min-h-dvh place-items-center px-4">{children}</div>;
+}
+
+/** Mantém o AuthProvider isolado às rotas internas, evitando chamadas a /auth/* nas rotas públicas. */
+function AreaInterna() {
+  return (
+    <AuthProvider>
+      <Outlet />
+    </AuthProvider>
+  );
 }
 
 /** Só deixa passar quem tem sessão; guarda a rota pedida para voltar a ela depois de entrar. */
@@ -85,16 +97,26 @@ function Inicio() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <AvisosProvider>
-          <Suspense
-            fallback={
-              <TelaCheia>
-                <Carregando />
-              </TelaCheia>
-            }
-          >
-            <Routes>
+      <AvisosProvider>
+        <Suspense
+          fallback={
+            <TelaCheia>
+              <Carregando />
+            </TelaCheia>
+          }
+        >
+          <Routes>
+            {/* Rotas públicas: fora do AuthContext, sem chamada a /auth/* */}
+            <Route element={<LayoutPublico />}>
+              <Route path="/privacidade" element={<PrivacidadePage />} />
+              <Route path="/adote" element={<EmBrevePublicoPage titulo="Vitrine de adoção" />} />
+              <Route path="/adote/:slug" element={<EmBrevePublicoPage titulo="Vitrine de adoção" />} />
+              <Route path="/termo/:token" element={<EmBrevePublicoPage titulo="Termo de adoção digital" />} />
+              <Route path="/carteira/:token" element={<EmBrevePublicoPage titulo="Carteira de vacinas" />} />
+            </Route>
+
+            {/* Rotas internas: com sessão Google + Whitelist */}
+            <Route element={<AreaInterna />}>
               <Route path="/entrar" element={<LoginPage />} />
               <Route
                 element={
@@ -118,10 +140,10 @@ export default function App() {
                 />
                 <Route path="*" element={<NaoEncontradaPage />} />
               </Route>
-            </Routes>
-          </Suspense>
-        </AvisosProvider>
-      </AuthProvider>
+            </Route>
+          </Routes>
+        </Suspense>
+      </AvisosProvider>
     </BrowserRouter>
   );
 }

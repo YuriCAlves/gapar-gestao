@@ -3,32 +3,14 @@ from flask_login import current_user
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.adoption import Adoption
-from app.models.blacklist import NonEligiblePerson
 from app.utils import tempo
 from app.services.audit import log_audit_event
-from app.utils.validation import ApiError, clean_text, get_payload, model_text, only_digits, parse_bool, parse_date
+from app.services.lista_sigilosa import procurar as procurar_na_lista_sigilosa
+from app.utils.validation import (
+    ApiError, clean_text, get_payload, model_text, parse_bool, parse_cpf, parse_date, parse_telefone,
+)
 
 adoptions_bp = Blueprint("adoptions", __name__, url_prefix="/api/adocoes")
-
-
-def _motivo_de_bloqueio(nome, cpf, telefone):
-    """RN15: confere o interessado contra a lista sigilosa. Devolve o motivo interno ou None.
-
-    O motivo vai apenas para a trilha de auditoria (visível só à Administradora), nunca para a resposta.
-    """
-    cpf_limpo = only_digits(cpf)
-    tel_limpo = only_digits(telefone)
-    nome_normalizado = " ".join(nome.lower().split())
-
-    registros = db.session.query(NonEligiblePerson.nome, NonEligiblePerson.cpf, NonEligiblePerson.telefone).all()
-    for item_nome, item_cpf, item_telefone in registros:
-        if cpf_limpo and item_cpf and only_digits(item_cpf) == cpf_limpo:
-            return "CPF constante na lista de não aptos"
-        if tel_limpo and item_telefone and only_digits(item_telefone) == tel_limpo:
-            return "Telefone constante na lista de não aptos"
-        if nome_normalizado == " ".join((item_nome or "").lower().split()):
-            return "Nome idêntico constante na lista de não aptos"
-    return None
 
 
 @adoptions_bp.route("/registrar/<int:animal_id>", methods=["POST"])
@@ -50,9 +32,10 @@ def register_adoption(animal_id):
     data = get_payload()
 
     adotante_nome = model_text(data, Adoption, "adotante_nome", default="")
-    adotante_telefone = model_text(data, Adoption, "adotante_telefone", default="")
-    adotante_cpf = model_text(data, Adoption, "adotante_cpf", default="")
-    adotante_endereco = model_text(data, Adoption, "adotante_endereco", default="")
+    # D2: telefone com DDD e CPF com dígito verificador; gravados só com dígitos
+    adotante_telefone = parse_telefone(data.get("adotante_telefone"), "adotante_telefone") or ""
+    adotante_cpf = parse_cpf(data.get("adotante_cpf"), "adotante_cpf") or ""
+    adotante_endereco = clean_text(data, "adotante_endereco", max_len=255, default="")
     observacoes = clean_text(data, "observacoes", default="")
     termo_fisico = parse_bool(data.get("termo_fisico_assinado")) or parse_bool(data.get("termo_assinado"))
 
@@ -67,13 +50,16 @@ def register_adoption(animal_id):
         raise ApiError("Data inválida", 400, "A data da adoção não pode ser uma data futura.")
 
     # Validação RN15: Checagem contra a Lista Sigilosa de Não Aptos
-    motivo_bloqueio = _motivo_de_bloqueio(adotante_nome, adotante_cpf, adotante_telefone)
+    motivo_bloqueio, registro = procurar_na_lista_sigilosa(adotante_nome, adotante_cpf, adotante_telefone)
     if motivo_bloqueio:
+        # Sem o nome do interessado: a auditoria é imutável (RN16) e não guarda dado pessoal.
+        # A Administradora chega à pessoa pelo número do registro na lista sigilosa.
         log_audit_event(
             acao="TENTATIVA_ADOCAO_BLOQUEADA_NAO_APTO",
             entidade="Adoption",
             entidade_id=animal.id,
-            detalhes=f"Tentativa de adoção do cão {animal.nome} bloqueada para '{adotante_nome}'. Motivo: {motivo_bloqueio} (RN15)"
+            detalhes=(f"Tentativa de adoção do cão {animal.nome} (#{animal.id}) bloqueada. "
+                      f"Motivo: {motivo_bloqueio}; registro sigiloso #{registro.id} (RN15)")
         )
         raise ApiError("Adoção não autorizada", 422,
                        "Não é possível prosseguir com o registro de adoção para este interessado. Por favor, verifique com a Administradora da ONG (RN15).")
@@ -103,7 +89,7 @@ def register_adoption(animal_id):
         acao="ADOCAO_FORMALIZADA",
         entidade="Adoption",
         entidade_id=adocao.id,
-        detalhes=f"Adoção formalizada: Cão {animal.nome} adotado por {adotante_nome}. Status alterado para 'adotado' e histórico congelado (RN05).",
+        detalhes=f"Adoção #{adocao.id} formalizada: cão {animal.nome} (#{animal.id}). Status alterado para 'adotado' e histórico congelado (RN05).",
         commit=False,
     )
     db.session.commit()

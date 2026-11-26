@@ -119,7 +119,7 @@ def test_rn04_status_adotado_exige_registro_formal(vol_client, app):
 
 def test_rn04_adocao_so_de_disponivel_ou_lar_temporario(vol_client, app):
     a = _animal("em tratamento")
-    payload = {"adotante_nome": "Ana", "adotante_telefone": "4199"}
+    payload = {"adotante_nome": "Ana", "adotante_telefone": "4133334444"}
     assert vol_client.post(f"/api/adocoes/{a.id}", json=payload).status_code == 422
     a.status_operacional = "lar temporário"
     db.session.commit()
@@ -129,7 +129,7 @@ def test_rn04_adocao_so_de_disponivel_ou_lar_temporario(vol_client, app):
 def test_rn04_data_adocao_invalida_nao_e_ignorada(vol_client, app):
     a = _animal("disponível")
     r = vol_client.post(f"/api/adocoes/{a.id}", json={
-        "adotante_nome": "Ana", "adotante_telefone": "4199", "data_adocao": "31/12/2026"})
+        "adotante_nome": "Ana", "adotante_telefone": "4133334444", "data_adocao": "31/12/2026"})
     assert r.status_code == 400
 
 
@@ -222,12 +222,12 @@ def test_vacina_data_invalida(vol_client, app):
 # --- RN15: lista sigilosa ----------------------------------------------------
 
 @pytest.mark.parametrize("campo,valor", [
-    ("adotante_cpf", "999.888.777-66"), ("adotante_telefone", "(41) 99999-8888"), ("adotante_nome", "  marcio inapto ")])
+    ("adotante_cpf", "999.888.777-14"), ("adotante_telefone", "(41) 99999-8888"), ("adotante_nome", "  marcio inapto ")])
 def test_rn15_bloqueia_por_cpf_telefone_ou_nome(vol_client, app, campo, valor):
-    db.session.add(NonEligiblePerson(nome="Marcio Inapto", cpf="999.888.777-66",
+    db.session.add(NonEligiblePerson(nome="Marcio Inapto", cpf="999.888.777-14",
                                      telefone="41999998888", motivo_impedimento="Maus tratos"))
     a = _animal("disponível")
-    payload = {"adotante_nome": "Fulano", "adotante_telefone": "41000000000", "adotante_cpf": "000.000.000-00"}
+    payload = {"adotante_nome": "Fulano", "adotante_telefone": "41911110000", "adotante_cpf": "529.982.247-25"}
     payload[campo] = valor
     r = vol_client.post(f"/api/adocoes/{a.id}", json=payload)
     assert r.status_code == 422

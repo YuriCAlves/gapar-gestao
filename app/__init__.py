@@ -44,12 +44,21 @@ def create_app(config_name=None):
 
     register_controllers(app)
 
+    # CP-01: rotas públicas (/api/public/*) não gravam cookie de sessão nem `Vary: Cookie`,
+    # para que a CDN possa guardá-las em cache e nenhum dado de sessão vaze para visitantes.
+    from .utils.publico import SessaoPublicaInterface, is_public_request
+    app.session_interface = SessaoPublicaInterface()
+
     # RNF05/RN12: toda a API interna exige sessão ativa. A trava é central para que nenhuma rota
     # nova fique aberta por esquecimento. As rotas /auth/* ficam fora, pois fazem o próprio login.
+    # Exceção única (CP-01): o blueprint `public`, com caminho canônico /api/public/*. Ele retorna
+    # antes de tocar em `current_user`, então nem chega a ler a sessão.
     @app.before_request
     def require_authenticated_api():
         from flask import request, g
         from flask_login import current_user, logout_user
+        if is_public_request():
+            return None
         if request.path.startswith("/api/") and not current_user.is_authenticated:
             if g.get("acesso_revogado"):
                 logout_user()  # encerra a sessão: as próximas requisições recebem 401
@@ -66,6 +75,8 @@ def create_app(config_name=None):
     @app.before_request
     def enforce_whitelist_status():
         from flask_login import current_user, logout_user
+        if is_public_request():
+            return None  # visitante público: a sessão (mesmo revogada) é ignorada, nunca 403
         if current_user.is_authenticated and not current_user.is_active:
             logout_user()
             return jsonify({
@@ -167,8 +178,9 @@ def create_app(config_name=None):
         return _json_error(400, "Dados inválidos",
                            "Algum campo tem valor ou tamanho que o cadastro não aceita. Confira as informações e tente novamente.")
 
-    from .commands import create_admin, seed_data
+    from .commands import create_admin, pii_backfill, seed_data
     app.cli.add_command(create_admin)
     app.cli.add_command(seed_data)
+    app.cli.add_command(pii_backfill)
 
     return app

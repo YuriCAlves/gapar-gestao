@@ -1,5 +1,23 @@
-import { useId } from "react";
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
+import type {
+  ChangeEvent,
+  FocusEvent,
+  InputEvent as ReactInputEvent,
+  InputHTMLAttributes,
+  KeyboardEvent,
+  ReactNode,
+  RefObject,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from "react";
+import {
+  mascararCpf,
+  mascararTelefone,
+  mensagemErroCpf,
+  mensagemErroTelefone,
+  posicaoCursorNaMascara,
+  soDigitos,
+} from "../utils/mascaras";
 
 // Campos de formulário: sempre com rótulo visível, mensagem de erro ligada ao campo
 // e altura confortável para o toque.
@@ -57,9 +75,12 @@ function descricao(idDica: string, idErro: string, dica?: string, erro?: string 
   return ids || undefined;
 }
 
-type PropsDoCampoTexto = PropsComuns & Omit<InputHTMLAttributes<HTMLInputElement>, "className" | "required">;
+type PropsDoCampoTexto = PropsComuns &
+  Omit<InputHTMLAttributes<HTMLInputElement>, "className" | "required"> & {
+    inputRef?: RefObject<HTMLInputElement>;
+  };
 
-export function CampoTexto({ rotulo, dica, erro, obrigatorio, className = "", id, ...resto }: PropsDoCampoTexto) {
+export function CampoTexto({ rotulo, dica, erro, obrigatorio, className = "", id, inputRef, ...resto }: PropsDoCampoTexto) {
   const gerado = useId();
   const idCampo = id ?? gerado;
   return (
@@ -67,6 +88,7 @@ export function CampoTexto({ rotulo, dica, erro, obrigatorio, className = "", id
       <Rotulo para={idCampo} rotulo={rotulo} obrigatorio={obrigatorio} />
       {dica && <Dica id={`${idCampo}-dica`}>{dica}</Dica>}
       <input
+        ref={inputRef}
         id={idCampo}
         aria-required={obrigatorio || undefined}
         aria-invalid={erro ? true : undefined}
@@ -77,6 +99,157 @@ export function CampoTexto({ rotulo, dica, erro, obrigatorio, className = "", id
       {erro && <Erro id={`${idCampo}-erro`}>{erro}</Erro>}
     </div>
   );
+}
+
+export interface PropsCampoMascarado
+  extends Omit<PropsDoCampoTexto, "value" | "onChange" | "maxLength" | "inputMode" | "autoComplete" | "type" | "inputRef"> {
+  /** Valor controlado contendo apenas dígitos (a pontuação é só visual). */
+  valor: string;
+  /** Entrega ao formulário sempre apenas os dígitos (máx. 11). */
+  onValor: (digitos: string) => void;
+}
+
+interface ConfigCampoMascarado {
+  type: "text" | "tel";
+  inputMode: "numeric" | "tel";
+  maxLength: number;
+  placeholderPadrao: string;
+  mascarar: (valor: string) => string;
+  validarNoBlur: (digitos: string, obrigatorio?: boolean) => string | null;
+}
+
+function CampoMascarado({
+  valor,
+  onValor,
+  erro,
+  obrigatorio,
+  placeholder,
+  onBlur,
+  onBeforeInput,
+  onKeyDown,
+  config,
+  ...resto
+}: PropsCampoMascarado & { config: ConfigCampoMascarado }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const cursorAlvo = useRef<number | null>(null);
+  const [erroBlur, setErroBlur] = useState<string | null>(null);
+
+  const digitosAtuais = soDigitos(valor).slice(0, 11);
+  const exibido = config.mascarar(digitosAtuais);
+
+  useLayoutEffect(() => {
+    if (cursorAlvo.current === null || !inputRef.current) return;
+    const pos = Math.min(cursorAlvo.current, exibido.length);
+    inputRef.current.setSelectionRange(pos, pos);
+    cursorAlvo.current = null;
+  }, [exibido]);
+
+  function atualizarComCursor(novosDigitos: string, digitosAntes: number) {
+    const limitado = novosDigitos.slice(0, 11);
+    const novoExibido = config.mascarar(limitado);
+    cursorAlvo.current = posicaoCursorNaMascara(novoExibido, Math.min(digitosAntes, limitado.length));
+    setErroBlur(null);
+    onValor(limitado);
+  }
+
+  function aoAntesDeDigitar(evento: ReactInputEvent<HTMLInputElement>) {
+    onBeforeInput?.(evento);
+    if (evento.defaultPrevented) return;
+    const dado = evento.data;
+    if (typeof dado === "string" && dado.length > 0 && soDigitos(dado).length === 0) {
+      evento.preventDefault();
+    }
+  }
+
+  function aoTeclar(evento: KeyboardEvent<HTMLInputElement>) {
+    onKeyDown?.(evento);
+    if (evento.defaultPrevented || evento.ctrlKey || evento.metaKey || evento.altKey) return;
+    const el = evento.currentTarget;
+    const inicio = el.selectionStart;
+    const fim = el.selectionEnd;
+    if (inicio === null || fim === null || inicio !== fim) return;
+
+    if (evento.key === "Backspace" && inicio > 0 && !/\d/.test(exibido[inicio - 1])) {
+      evento.preventDefault();
+      const indiceDigito = soDigitos(exibido.slice(0, inicio)).length - 1;
+      if (indiceDigito >= 0) {
+        const novos = digitosAtuais.slice(0, indiceDigito) + digitosAtuais.slice(indiceDigito + 1);
+        atualizarComCursor(novos, indiceDigito);
+      }
+      return;
+    }
+
+    if (evento.key === "Delete" && inicio < exibido.length && !/\d/.test(exibido[inicio])) {
+      evento.preventDefault();
+      const indiceDigito = soDigitos(exibido.slice(0, inicio)).length;
+      if (indiceDigito < digitosAtuais.length) {
+        const novos = digitosAtuais.slice(0, indiceDigito) + digitosAtuais.slice(indiceDigito + 1);
+        atualizarComCursor(novos, indiceDigito);
+      }
+    }
+  }
+
+  function aoMudar(evento: ChangeEvent<HTMLInputElement>) {
+    const bruto = evento.target.value;
+    const selecao = evento.target.selectionStart ?? bruto.length;
+    const digitosAntes = soDigitos(bruto.slice(0, selecao)).length;
+    atualizarComCursor(soDigitos(bruto), digitosAntes);
+  }
+
+  function aoSair(evento: FocusEvent<HTMLInputElement>) {
+    // Valida ao sair quando houver conteúdo (ou quando for obrigatório e incompleto).
+    setErroBlur(digitosAtuais.length > 0 ? config.validarNoBlur(digitosAtuais, obrigatorio) : null);
+    onBlur?.(evento);
+  }
+
+  const erroExibido = erro || (digitosAtuais.length > 0 ? erroBlur : null);
+
+  return (
+    <CampoTexto
+      {...resto}
+      inputRef={inputRef}
+      type={config.type}
+      inputMode={config.inputMode}
+      autoComplete="off"
+      maxLength={config.maxLength}
+      placeholder={placeholder ?? config.placeholderPadrao}
+      obrigatorio={obrigatorio}
+      value={exibido}
+      erro={erroExibido}
+      onBeforeInput={aoAntesDeDigitar}
+      onKeyDown={aoTeclar}
+      onChange={aoMudar}
+      onBlur={aoSair}
+    />
+  );
+}
+
+const CONFIG_CPF: ConfigCampoMascarado = {
+  type: "text",
+  inputMode: "numeric",
+  maxLength: 14,
+  placeholderPadrao: "000.000.000-00",
+  mascarar: mascararCpf,
+  validarNoBlur: mensagemErroCpf,
+};
+
+const CONFIG_TELEFONE: ConfigCampoMascarado = {
+  type: "tel",
+  inputMode: "tel",
+  maxLength: 15,
+  placeholderPadrao: "(00) 00000-0000",
+  mascarar: mascararTelefone,
+  validarNoBlur: mensagemErroTelefone,
+};
+
+/** Campo de CPF com máscara estrita (000.000.000-00) que entrega apenas dígitos. */
+export function CampoCpf(props: PropsCampoMascarado) {
+  return <CampoMascarado {...props} config={CONFIG_CPF} />;
+}
+
+/** Campo de telefone com máscara estrita ((00) 00000-0000 / (00) 0000-0000) que entrega apenas dígitos. */
+export function CampoTelefone(props: PropsCampoMascarado) {
+  return <CampoMascarado {...props} config={CONFIG_TELEFONE} />;
 }
 
 type PropsDoCampoArea = PropsComuns & Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "className" | "required">;

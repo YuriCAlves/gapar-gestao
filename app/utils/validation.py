@@ -140,3 +140,46 @@ def is_horario(value):
 def only_digits(value):
     """Somente os dígitos do valor (para comparar CPF e telefone sem pontuação)."""
     return re.sub(r"\D", "", str(value)) if value else ""
+
+
+def _texto_simples(value, campo):
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list, bool)):
+        raise ApiError("Valor inválido", 400, f"O campo '{campo}' deve ser um texto.")
+    return str(value).strip()
+
+
+def parse_cpf(value, campo="cpf", obrigatorio=False):
+    """D2: CPF com 11 dígitos e dígito verificador válido. Devolve só os dígitos (ou None se vazio)."""
+    from app.utils.pii import cpf_valido, so_digitos
+
+    texto = _texto_simples(value, campo)
+    if not texto:
+        if obrigatorio:
+            raise ApiError("Campo obrigatório", 400, f"O campo '{campo}' é obrigatório.")
+        return None
+    if re.search(r"[^\d.\-\s]", texto) or len(texto) > 20:
+        raise ApiError("CPF inválido", 400, "O CPF deve conter só números (11 dígitos).")
+    digitos = so_digitos(texto)
+    if len(digitos) != 11:
+        raise ApiError("CPF inválido", 400, "O CPF deve ter 11 dígitos.")
+    if not cpf_valido(digitos):
+        raise ApiError("CPF inválido", 400, "Este CPF não é válido. Confira os números.")
+    return digitos
+
+
+def parse_telefone(value, campo="telefone", obrigatorio=False):
+    """D2: telefone com DDD, 10 (fixo) ou 11 (celular) dígitos. Devolve só os dígitos (ou None)."""
+    from app.utils.pii import so_digitos, telefone_valido
+
+    texto = _texto_simples(value, campo)
+    if not texto:
+        if obrigatorio:
+            raise ApiError("Campo obrigatório", 400, f"O campo '{campo}' é obrigatório.")
+        return None
+    if re.search(r"[^\d()\-\s+]", texto) or len(texto) > 20:
+        raise ApiError("Telefone inválido", 400, "O telefone deve conter só números, com DDD.")
+    if not telefone_valido(so_digitos(texto)):
+        raise ApiError("Telefone inválido", 400, "Informe o DDD e o número (10 ou 11 números).")
+    return so_digitos(texto)

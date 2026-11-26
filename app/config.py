@@ -40,6 +40,15 @@ def build_database_uri(default_sqlite_name: str) -> str:
     return f"sqlite:///{BASE_DIR / default_sqlite_name}"
 
 
+FLAGS_DISPONIVEIS = ("vitrine", "estoque", "microchip", "isolamento", "pos_adocao",
+                     "termo_digital", "candidaturas", "carteira", "mapa")
+
+
+def _flag_do_ambiente(nome: str) -> bool:
+    """FEATURE_<NOME>=1|true|sim liga o módulo. Ausente = desligado (fail-closed)."""
+    return os.getenv(f"FEATURE_{nome.upper()}", "").strip().lower() in ("1", "true", "sim", "on", "yes")
+
+
 class Config:
     """Configurações base da aplicação GAPAR Gestão."""
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-chave-secreta-padrao-gapar")
@@ -87,6 +96,18 @@ class Config:
     SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "animais")
 
+    # Dados pessoais cifrados (CP-01). Chaves próprias, separadas da SECRET_KEY.
+    # PII_FERNET_KEYS: uma ou mais chaves Fernet separadas por vírgula (a 1ª cifra).
+    # PII_HMAC_KEY: segredo do índice cego usado na busca exata de CPF/telefone (RN15).
+    PII_FERNET_KEYS = os.getenv("PII_FERNET_KEYS", "")
+    PII_HMAC_KEY = os.getenv("PII_HMAC_KEY", "")
+
+    # Superfície pública (CP-01): anti-robô, WhatsApp de adoção e módulos liberados por flag.
+    TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY", "")
+    TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY", "")
+    PUBLIC_WHATSAPP_ADOCAO = os.getenv("PUBLIC_WHATSAPP_ADOCAO", "")
+    FEATURES = {nome: _flag_do_ambiente(nome) for nome in FLAGS_DISPONIVEIS}
+
 
 class DevelopmentConfig(Config):
     """Ambiente de Desenvolvimento."""
@@ -106,6 +127,13 @@ class TestingConfig(Config):
     APP_TIMEZONE = ""
     SUPABASE_URL = ""
     SUPABASE_SERVICE_ROLE_KEY = ""
+    # Chaves fixas de teste (nunca usar fora dos testes) e módulos desligados, como em produção.
+    PII_FERNET_KEYS = "dGVzdGUtZ2FwYXItY2hhdmUtcGlpLTMyLWJ5dGVzISE="
+    PII_HMAC_KEY = "teste-gapar-hmac-indice-cego-32-caracteres-ou-mais"
+    TURNSTILE_SITE_KEY = ""
+    TURNSTILE_SECRET_KEY = ""
+    PUBLIC_WHATSAPP_ADOCAO = ""
+    FEATURES = {nome: False for nome in FLAGS_DISPONIVEIS}
 
 
 class ProductionConfig(Config):
@@ -143,6 +171,13 @@ class ProductionConfig(Config):
             erros.append("GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET ausentes: ninguém conseguiria entrar.")
         if not os.getenv("INITIAL_ADMIN_EMAIL"):
             erros.append("INITIAL_ADMIN_EMAIL ausente (RN13).")
+        from app.utils.crypto import parece_valor_de_exemplo, problemas_chaves_pii
+        if parece_valor_de_exemplo(chave):
+            erros.append("SECRET_KEY ainda é o valor de exemplo do .env.example: gere um segredo novo.")
+        erros.extend(problemas_chaves_pii(config))
+        # Chaves de teste da Cloudflare aprovam qualquer requisição: em produção desligam o anti-robô.
+        if parece_valor_de_exemplo(config.get("TURNSTILE_SECRET_KEY")):
+            erros.append("TURNSTILE_SECRET_KEY é chave de teste/exemplo: em produção use a chave real ou deixe vazia.")
         return erros
 
 

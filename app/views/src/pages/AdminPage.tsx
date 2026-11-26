@@ -15,7 +15,7 @@ import type { FiltrosAuditoria } from "../api/admin";
 import { textoDoErro } from "../api/http";
 import { Abas, PainelDaAba } from "../components/Abas";
 import { Botao } from "../components/Botao";
-import { CampoArea, CampoSelecao, CampoTexto } from "../components/Campos";
+import { CampoArea, CampoCpf, CampoSelecao, CampoTelefone, CampoTexto } from "../components/Campos";
 import { Confirmacao, Dialogo } from "../components/Dialogo";
 import { Aviso, Esqueleto, EstadoErro, EstadoVazio } from "../components/Estados";
 import { IconeCadeado, IconeMais, IconePessoa } from "../components/Icones";
@@ -24,6 +24,7 @@ import { useAvisos } from "../contexts/AvisosContext";
 import { useCarregar } from "../hooks/useCarregar";
 import type { Perfil, PessoaAutorizada } from "../types";
 import { formatarDataHora } from "../utils/datas";
+import { cpfValido, exibirCpf, exibirTelefone, mensagemErroCpf, mensagemErroTelefone, telefoneValido } from "../utils/mascaras";
 import { limparTextoDoServidor } from "../utils/mensagens";
 
 type IdDaAba = "pessoas" | "nao-aptos" | "historico";
@@ -174,10 +175,29 @@ function PessoasAutorizadas() {
 // Lista sigilosa de pessoas não aptas a adotar
 // ---------------------------------------------------------------------------
 
+type TipoBuscaNaoAptos = "nome" | "cpf" | "telefone";
+
+const MODOS_BUSCA_NAO_APTOS: { valor: TipoBuscaNaoAptos; rotulo: string }[] = [
+  { valor: "nome", rotulo: "Nome" },
+  { valor: "cpf", rotulo: "CPF" },
+  { valor: "telefone", rotulo: "Telefone" },
+];
+
 function NaoAptos() {
   const { avisarSucesso } = useAvisos();
+  const [tipoBusca, setTipoBusca] = useState<TipoBuscaNaoAptos>("nome");
   const [busca, setBusca] = useState("");
-  const lista = useCarregar((sinal) => listarNaoAptos(sinal), []);
+  const cpfPronto = tipoBusca === "cpf" && cpfValido(busca) ? busca : "";
+  const telefonePronto = tipoBusca === "telefone" && telefoneValido(busca) ? busca : "";
+
+  const lista = useCarregar(
+    (sinal) => {
+      if (cpfPronto) return listarNaoAptos({ cpf: cpfPronto }, sinal);
+      if (telefonePronto) return listarNaoAptos({ telefone: telefonePronto }, sinal);
+      return listarNaoAptos({}, sinal);
+    },
+    [cpfPronto, telefonePronto],
+  );
   const [aberto, setAberto] = useState(false);
   const [form, setForm] = useState({ nome: "", cpf: "", telefone: "", motivo_impedimento: "" });
   const [erros, setErros] = useState<Record<string, string>>({});
@@ -189,15 +209,21 @@ function NaoAptos() {
     setErros((e) => ({ ...e, [campo]: "" }));
   };
 
+  function trocarTipoBusca(novo: TipoBuscaNaoAptos) {
+    if (novo === tipoBusca) return;
+    setTipoBusca(novo);
+    setBusca("");
+  }
+
   async function salvar(evento: FormEvent) {
     evento.preventDefault();
     const novos: Record<string, string> = {};
     if (!form.nome.trim()) novos.nome = "Informe o nome completo.";
     if (!form.motivo_impedimento.trim()) novos.motivo_impedimento = "Descreva o motivo.";
-    const cpf = form.cpf.replace(/\D/g, "");
-    if (cpf && cpf.length !== 11) novos.cpf = "O CPF tem 11 números.";
-    const tel = form.telefone.replace(/\D/g, "");
-    if (tel && tel.length < 8) novos.telefone = "Confira o telefone: faltam números.";
+    const erroCpf = mensagemErroCpf(form.cpf, false);
+    if (erroCpf) novos.cpf = erroCpf;
+    const erroTel = mensagemErroTelefone(form.telefone, false);
+    if (erroTel) novos.telefone = erroTel;
     setErros(novos);
     if (Object.keys(novos).length) return;
     setSalvando(true);
@@ -206,8 +232,8 @@ function NaoAptos() {
       await cadastrarNaoApto({
         nome: form.nome.trim(),
         motivo_impedimento: form.motivo_impedimento.trim(),
-        cpf: form.cpf.trim() || undefined,
-        telefone: form.telefone.trim() || undefined,
+        cpf: form.cpf || undefined,
+        telefone: form.telefone || undefined,
       });
       avisarSucesso("Pessoa incluída na lista sigilosa.");
       setAberto(false);
@@ -220,21 +246,73 @@ function NaoAptos() {
     }
   }
 
-  const termo = busca.trim().toLowerCase();
-  const filtrados = (lista.dados ?? []).filter(
-    (p) => !termo || p.nome.toLowerCase().includes(termo) || (p.cpf ?? "").includes(termo) || (p.telefone ?? "").includes(termo),
-  );
+  const termoNome = tipoBusca === "nome" ? busca.trim().toLowerCase() : "";
+  const filtrados =
+    tipoBusca === "nome"
+      ? (lista.dados ?? []).filter((p) => !termoNome || p.nome.toLowerCase().includes(termoNome))
+      : (lista.dados ?? []);
+  const aguardandoNumeroCompleto =
+    (tipoBusca === "cpf" && !cpfPronto) || (tipoBusca === "telefone" && !telefonePronto);
+  const temBuscaAtiva = Boolean(termoNome || cpfPronto || telefonePronto);
 
   return (
     <div className="space-y-4">
       <Aviso tipo="preservado" titulo="Informação sigilosa">
         Só a administradora vê esta lista. Quando alguém daqui tenta adotar, o sistema bloqueia a adoção sem mostrar o motivo para a voluntária.
       </Aviso>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <CampoTexto className="flex-1" rotulo="Procurar na lista" type="search" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome, CPF ou telefone" />
-        <Botao icone={<IconeMais />} onClick={() => setAberto(true)}>
-          Incluir pessoa
-        </Botao>
+
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div role="group" aria-label="Procurar por" className="flex flex-wrap items-center gap-2">
+            <span className="font-bold text-tinta-900">Procurar por:</span>
+            <div className="inline-flex rounded-xl border-2 border-contorno bg-white p-0.5">
+              {MODOS_BUSCA_NAO_APTOS.map((modo) => (
+                <button
+                  key={modo.valor}
+                  type="button"
+                  aria-pressed={tipoBusca === modo.valor}
+                  onClick={() => trocarTipoBusca(modo.valor)}
+                  className={`min-h-11 rounded-lg px-3.5 font-bold transition-colors ${
+                    tipoBusca === modo.valor ? "bg-mata-700 text-white" : "text-tinta-700 hover:bg-mata-50"
+                  }`}
+                >
+                  {modo.rotulo}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Botao icone={<IconeMais />} onClick={() => setAberto(true)}>
+            Incluir pessoa
+          </Botao>
+        </div>
+
+        <div>
+          {tipoBusca === "nome" && (
+            <CampoTexto
+              rotulo="Procurar por nome"
+              type="search"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Digite parte do nome"
+            />
+          )}
+          {tipoBusca === "cpf" && (
+            <CampoCpf
+              rotulo="Procurar por CPF"
+              valor={busca}
+              onValor={setBusca}
+              dica={aguardandoNumeroCompleto ? "Digite o CPF completo para procurar." : undefined}
+            />
+          )}
+          {tipoBusca === "telefone" && (
+            <CampoTelefone
+              rotulo="Procurar por telefone"
+              valor={busca}
+              onValor={setBusca}
+              dica={aguardandoNumeroCompleto ? "Digite o telefone completo com DDD para procurar." : undefined}
+            />
+          )}
+        </div>
       </div>
 
       {lista.erro && !lista.dados ? (
@@ -242,19 +320,23 @@ function NaoAptos() {
       ) : !lista.dados ? (
         <Esqueleto className="h-40" />
       ) : filtrados.length === 0 ? (
-        <EstadoVazio icone={<IconeCadeado tamanho={28} />} titulo={termo ? "Ninguém encontrado" : "Lista vazia"} />
+        <EstadoVazio icone={<IconeCadeado tamanho={28} />} titulo={temBuscaAtiva ? "Ninguém encontrado" : "Lista vazia"} />
       ) : (
-        <ul className="space-y-2">
-          {filtrados.map((p) => (
-            <li key={p.id} className="rounded-2xl bg-white p-4 shadow-cartao">
-              <p className="font-extrabold break-words text-tinta-900">{p.nome}</p>
-              <p className="text-tinta-700">
-                {[p.cpf && `CPF ${p.cpf}`, p.telefone && `Tel. ${p.telefone}`].filter(Boolean).join(" · ") || "Sem CPF ou telefone"}
-              </p>
-              <p className="mt-1 break-words whitespace-pre-line">{p.motivo_impedimento}</p>
-              <p className="mt-1 text-tinta-700">Incluída em {formatarDataHora(p.created_at)}</p>
-            </li>
-          ))}
+        <ul className={`space-y-2 ${lista.carregando ? "opacity-60" : ""}`}>
+          {filtrados.map((p) => {
+            const cpfFormatado = exibirCpf(p.cpf);
+            const telFormatado = exibirTelefone(p.telefone);
+            return (
+              <li key={p.id} className="rounded-2xl bg-white p-4 shadow-cartao">
+                <p className="font-extrabold break-words text-tinta-900">{p.nome}</p>
+                <p className="text-tinta-700">
+                  {[cpfFormatado && `CPF ${cpfFormatado}`, telFormatado && `Tel. ${telFormatado}`].filter(Boolean).join(" · ") || "Sem CPF ou telefone"}
+                </p>
+                <p className="mt-1 break-words whitespace-pre-line">{p.motivo_impedimento}</p>
+                <p className="mt-1 text-tinta-700">Incluída em {formatarDataHora(p.created_at)}</p>
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -276,8 +358,8 @@ function NaoAptos() {
         <form id="form-nao-apto" onSubmit={salvar} noValidate className="space-y-4">
           <CampoTexto rotulo="Nome completo" obrigatorio autoComplete="off" value={form.nome} onChange={(e) => mudar("nome", e.target.value)} erro={erros.nome} />
           <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2">
-            <CampoTexto rotulo="CPF" inputMode="numeric" autoComplete="off" value={form.cpf} onChange={(e) => mudar("cpf", e.target.value)} erro={erros.cpf} />
-            <CampoTexto rotulo="Telefone" type="tel" autoComplete="off" value={form.telefone} onChange={(e) => mudar("telefone", e.target.value)} erro={erros.telefone} />
+            <CampoCpf rotulo="CPF" valor={form.cpf} onValor={(v) => mudar("cpf", v)} erro={erros.cpf} />
+            <CampoTelefone rotulo="Telefone" valor={form.telefone} onValor={(v) => mudar("telefone", v)} erro={erros.telefone} />
           </div>
           <CampoArea rotulo="Motivo do impedimento" obrigatorio value={form.motivo_impedimento} onChange={(e) => mudar("motivo_impedimento", e.target.value)} erro={erros.motivo_impedimento} />
           <p className="text-tinta-700">CPF e telefone ajudam o sistema a reconhecer a pessoa mesmo com o nome escrito de outro jeito.</p>

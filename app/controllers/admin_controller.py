@@ -7,9 +7,11 @@ from app.models.audit import AuditLog
 from app.models.base import PERFIS
 from app.utils import tempo
 from app.utils.decorators import admin_required
+from app.services import lista_sigilosa
 from app.services.audit import log_audit_event
 from app.utils.validation import (
-    ApiError, clean_text, get_payload, model_text, only_digits, parse_bool, parse_date, parse_email, require_choice,
+    ApiError, clean_text, get_payload, model_text, parse_bool, parse_cpf, parse_date, parse_email, parse_telefone,
+    require_choice,
 )
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
@@ -169,13 +171,11 @@ def _dados_nao_apto(data, parcial=False):
     if any(v == "" for v in campos.values()):
         raise ApiError("Nome e motivo do impedimento são obrigatórios.", 400,
                        "Informe o nome da pessoa e o motivo do impedimento.")
-    for campo in ("cpf", "telefone"):
-        if not parcial or campo in data:
-            campos[campo] = model_text(data, NonEligiblePerson, campo, default="")
-    if campos.get("cpf") and len(only_digits(campos["cpf"])) != 11:
-        raise ApiError("CPF inválido", 400, "O CPF deve ter 11 dígitos.")
-    if campos.get("telefone") and len(only_digits(campos["telefone"])) < 8:
-        raise ApiError("Telefone inválido", 400, "O telefone deve ter ao menos 8 dígitos.")
+    # D2: CPF e telefone só completos e válidos; gravados só com dígitos (e cifrados no modelo)
+    if not parcial or "cpf" in data:
+        campos["cpf"] = parse_cpf(data.get("cpf"), "cpf") or ""
+    if not parcial or "telefone" in data:
+        campos["telefone"] = parse_telefone(data.get("telefone"), "telefone") or ""
     return campos
 
 
@@ -191,7 +191,8 @@ def nao_aptos():
             acao="NAO_APTO_INCLUIDO",
             entidade="NonEligiblePerson",
             entidade_id=bloqueado.id,
-            detalhes=f"Inclusão de {bloqueado.nome} na lista sigilosa de não aptos (RN15)",
+            # Sem nome/CPF/telefone: a auditoria é imutável (RN16) e não pode guardar dado pessoal
+            detalhes=f"Inclusão do registro #{bloqueado.id} na lista sigilosa de não aptos (RN15)",
             commit=False,
         )
         db.session.commit()
@@ -202,15 +203,20 @@ def nao_aptos():
             "nao_apto": bloqueado.to_dict()
         }), 201
 
-    query = NonEligiblePerson.query
-    busca = request.args.get("q", "").strip()
-    if busca:
-        condicoes = [db.func.lower(NonEligiblePerson.nome).contains(busca.lower(), autoescape=True)]
-        if only_digits(busca):
-            condicoes += [NonEligiblePerson.cpf.contains(busca, autoescape=True),
-                          NonEligiblePerson.telefone.contains(busca, autoescape=True)]
-        query = query.filter(db.or_(*condicoes))
-    lista = query.order_by(NonEligiblePerson.created_at.desc(), NonEligiblePerson.id.desc()).all()
+    # D2: `q` procura só por nome (parcial); CPF e telefone só por número completo (índice cego)
+    cpf = parse_cpf(request.args.get("cpf"), "cpf")
+    telefone = parse_telefone(request.args.get("telefone"), "telefone")
+    if cpf and telefone:
+        raise ApiError("Busca inválida", 400, "Procure por CPF ou por telefone, um de cada vez.")
+    if cpf or telefone:
+        lista = lista_sigilosa.buscar_exato(cpf=cpf, telefone=telefone)
+        lista.sort(key=lambda item: (item.created_at, item.id), reverse=True)
+    else:
+        query = NonEligiblePerson.query
+        busca = request.args.get("q", "").strip()
+        if busca:
+            query = query.filter(db.func.lower(NonEligiblePerson.nome).contains(busca.lower(), autoescape=True))
+        lista = query.order_by(NonEligiblePerson.created_at.desc(), NonEligiblePerson.id.desc()).all()
     return jsonify({
         "sucesso": True,
         "total": len(lista),
@@ -232,7 +238,7 @@ def alterar_nao_apto(item_id):
             acao="NAO_APTO_ALTERADO",
             entidade="NonEligiblePerson",
             entidade_id=item.id,
-            detalhes=f"Registro sigiloso de {item.nome} alterado (campos: {', '.join(alterados)}) (RN15)",
+            detalhes=f"Registro sigiloso #{item.id} alterado (campos: {', '.join(alterados)}) (RN15)",
             commit=False,
         )
         db.session.commit()

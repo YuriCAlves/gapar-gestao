@@ -22,11 +22,25 @@ Um único projeto Vercel serve as duas camadas:
 | `SUPABASE_STORAGE_BUCKET` | não | padrão `animais` |
 | `APP_TIMEZONE` | não | padrão `America/Sao_Paulo` |
 
+### Variáveis da Ampliação v5.1 (LGPD, Anti-Bot, Cron e Feature Flags)
+
+| Variável | Obrigatória | Valor / Como gerar |
+|---|---|---|
+| `PII_FERNET_KEYS` | sim (a partir do CP-01) | Uma ou mais chaves Fernet separadas por vírgula (`MultiFernet`): `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `PII_HMAC_KEY` | sim (a partir do CP-01) | 32+ caracteres aleatórios para busca exata (blind index): `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | sim quando houver formulário público | Chaves do widget gratuito **Cloudflare Turnstile** (painel Cloudflare) |
+| `PUBLIC_WHATSAPP_ADOCAO` | sim quando `FEATURE_VITRINE=true` | Número oficial de adoção só com dígitos + DDI `55`, ex.: `5541999998888` |
+| `CRON_SECRET` | sim (a partir do CP-08) | Segredo aleatório para o Vercel Cron chamar `/api/cron/lgpd-anonymize`: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `RETENCAO_CANDIDATURA_DIAS` | não | padrão `180` (dias antes da anonimização RN25) |
+| `FEATURE_VITRINE`, `FEATURE_ESTOQUE`, `FEATURE_MICROCHIP`, `FEATURE_ISOLAMENTO`, `FEATURE_POS_ADOCAO`, `FEATURE_TERMO_DIGITAL`, `FEATURE_CANDIDATURAS`, `FEATURE_CARTEIRA`, `FEATURE_MAPA` | não | padrão `false` — ligue (`true`) **somente após** homologar o módulo correspondente |
+
 Sem as obrigatórias, a função **não sobe** e o log mostra exatamente o que falta
 (`Configuração de produção incompleta: ...`). O login de desenvolvimento nunca existe em produção.
 
 > Trocar o `SECRET_KEY` invalida as sessões abertas e os tokens do Google já guardados
 > (as pessoas só precisam entrar de novo).
+>
+> **Atenção crítica sobre `PII_FERNET_KEYS`:** guarde uma cópia segura dessa chave fora da Vercel (cofre de senhas da ONG). **Perder a `PII_FERNET_KEYS` torna os CPFs (e demais dados cifrados) ilegíveis para sempre.** Para rotacionar com segurança, adicione a nova chave **antes** da antiga separada por vírgula (`nova,antiga`) até regravar os registros.
 
 ## 2. Google Cloud Console
 

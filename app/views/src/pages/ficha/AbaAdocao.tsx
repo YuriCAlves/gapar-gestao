@@ -3,12 +3,13 @@ import type { FormEvent } from "react";
 import { adocaoFoiBarrada, registrarAdocao } from "../../api/adocoes";
 import { textoDoErro } from "../../api/http";
 import { Botao } from "../../components/Botao";
-import { CaixaDeMarcacao, CampoArea, CampoTexto } from "../../components/Campos";
+import { CaixaDeMarcacao, CampoArea, CampoCpf, CampoTelefone, CampoTexto } from "../../components/Campos";
 import { Confirmacao, Dialogo } from "../../components/Dialogo";
 import { Aviso } from "../../components/Estados";
 import { IconeCadeado, IconeCoracao } from "../../components/Icones";
 import { useAvisos } from "../../contexts/AvisosContext";
 import { formatarData, hojeISO } from "../../utils/datas";
+import { exibirCpf, exibirTelefone, mensagemErroCpf, mensagemErroTelefone } from "../../utils/mascaras";
 import { podeSerAdotado, rotuloDoStatus } from "../../utils/status";
 import type { PropsDaAba } from "./tipos";
 
@@ -43,13 +44,13 @@ export function AbaAdocao({ ficha, aoAtualizar }: PropsDaAba) {
           <dt className="font-bold text-tinta-900">Adotante</dt>
           <dd className="break-words">{adocao.adotante_nome}</dd>
           <dt className="font-bold text-tinta-900">Telefone</dt>
-          <dd>{adocao.adotante_telefone}</dd>
+          <dd>{exibirTelefone(adocao.adotante_telefone)}</dd>
           <dt className="font-bold text-tinta-900">Data da adoção</dt>
           <dd>{formatarData(adocao.data_adocao)}</dd>
           {adocao.adotante_cpf && (
             <>
               <dt className="font-bold text-tinta-900">CPF</dt>
-              <dd>{adocao.adotante_cpf}</dd>
+              <dd>{exibirCpf(adocao.adotante_cpf)}</dd>
             </>
           )}
           {adocao.adotante_endereco && (
@@ -96,13 +97,12 @@ export function AbaAdocao({ ficha, aoAtualizar }: PropsDaAba) {
     evento.preventDefault();
     const novos: Record<string, string> = {};
     if (!form.adotante_nome.trim()) novos.adotante_nome = "Informe o nome de quem adota.";
-    const digitos = form.adotante_telefone.replace(/\D/g, "");
-    if (!digitos) novos.adotante_telefone = "Informe um telefone para contato.";
-    else if (digitos.length < 8) novos.adotante_telefone = "Confira o telefone: faltam números.";
+    const erroTel = mensagemErroTelefone(form.adotante_telefone, true);
+    if (erroTel) novos.adotante_telefone = erroTel;
     if (!form.data_adocao) novos.data_adocao = "Informe a data da adoção.";
     else if (form.data_adocao > hoje) novos.data_adocao = "A data não pode ser no futuro.";
-    const cpf = form.adotante_cpf.replace(/\D/g, "");
-    if (cpf && cpf.length !== 11) novos.adotante_cpf = "O CPF tem 11 números.";
+    const erroCpf = mensagemErroCpf(form.adotante_cpf, false);
+    if (erroCpf) novos.adotante_cpf = erroCpf;
     setErros(novos);
     setErroGeral(null);
     if (Object.keys(novos).length === 0) setConfirmando(true);
@@ -113,9 +113,9 @@ export function AbaAdocao({ ficha, aoAtualizar }: PropsDaAba) {
     try {
       await registrarAdocao(animal.id, {
         adotante_nome: form.adotante_nome.trim(),
-        adotante_telefone: form.adotante_telefone.trim(),
+        adotante_telefone: form.adotante_telefone,
         data_adocao: form.data_adocao,
-        adotante_cpf: form.adotante_cpf.trim() || undefined,
+        adotante_cpf: form.adotante_cpf || undefined,
         adotante_endereco: form.adotante_endereco.trim() || undefined,
         observacoes: form.observacoes.trim() || undefined,
         termo_fisico_assinado: form.termo_fisico_assinado,
@@ -140,9 +140,9 @@ export function AbaAdocao({ ficha, aoAtualizar }: PropsDaAba) {
       </div>
       <CampoTexto rotulo="Nome de quem adota" obrigatorio autoComplete="off" value={form.adotante_nome} onChange={(e) => mudar("adotante_nome", e.target.value)} erro={erros.adotante_nome} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <CampoTexto rotulo="Telefone" obrigatorio type="tel" inputMode="tel" autoComplete="off" placeholder="(00) 00000-0000" value={form.adotante_telefone} onChange={(e) => mudar("adotante_telefone", e.target.value)} erro={erros.adotante_telefone} />
+        <CampoTelefone rotulo="Telefone" obrigatorio valor={form.adotante_telefone} onValor={(v) => mudar("adotante_telefone", v)} erro={erros.adotante_telefone} />
         <CampoTexto rotulo="Data da adoção" obrigatorio type="date" max={hoje} value={form.data_adocao} onChange={(e) => mudar("data_adocao", e.target.value)} erro={erros.data_adocao} />
-        <CampoTexto rotulo="CPF" inputMode="numeric" autoComplete="off" placeholder="Opcional" value={form.adotante_cpf} onChange={(e) => mudar("adotante_cpf", e.target.value)} erro={erros.adotante_cpf} />
+        <CampoCpf rotulo="CPF" valor={form.adotante_cpf} onValor={(v) => mudar("adotante_cpf", v)} erro={erros.adotante_cpf} />
         <CampoTexto rotulo="Endereço" autoComplete="off" placeholder="Opcional" value={form.adotante_endereco} onChange={(e) => mudar("adotante_endereco", e.target.value)} />
       </div>
       <CampoArea rotulo="Observações" rows={2} value={form.observacoes} onChange={(e) => mudar("observacoes", e.target.value)} />
@@ -165,7 +165,7 @@ export function AbaAdocao({ ficha, aoAtualizar }: PropsDaAba) {
         aoConfirmar={() => void registrar()}
       >
         <p>
-          <strong>{form.adotante_nome.trim()}</strong>, telefone {form.adotante_telefone.trim()}, em {formatarData(form.data_adocao)}.
+          <strong>{form.adotante_nome.trim()}</strong>, telefone {exibirTelefone(form.adotante_telefone)}, em {formatarData(form.data_adocao)}.
         </p>
         <p>Depois de confirmar, isto não pode ser desfeito e a ficha de {animal.nome} não poderá mais ser alterada.</p>
       </Confirmacao>

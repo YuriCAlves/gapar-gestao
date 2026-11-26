@@ -150,10 +150,10 @@ def seed_data():
     click.echo(f"{OK} Usuárias da Whitelist configuradas.")
 
     # 2. Lista Sigilosa de Não Aptos (RN15)
-    if not NonEligiblePerson.query.filter_by(cpf="111.222.333-44").first():
+    if not NonEligiblePerson.query.filter_by(nome="João Inapto de Oliveira").first():
         db.session.add(NonEligiblePerson(
             nome="João Inapto de Oliveira",
-            cpf="111.222.333-44",
+            cpf="111.222.333-96",
             telefone="41988887777",
             motivo_impedimento="Histórico reincidente de negligência e abandono de animais em 2024.",
             cadastrado_por_user_id=admin.id,
@@ -219,7 +219,7 @@ def seed_data():
     if not Adoption.query.filter_by(animal_id=mel.id).first():
         db.session.add(Adoption(
             animal_id=mel.id, adotante_nome="Fernanda Duarte", adotante_telefone="41991234567",
-            adotante_cpf="987.654.321-00", adotante_endereco="Rua das Flores, 120 - Curitiba/PR",
+            adotante_cpf="98765432100", adotante_endereco="Rua das Flores, 120 - Curitiba/PR",
             data_adocao=dias(-5), termo_assinado=True, termo_fisico_assinado=True,
             observacoes="Adotada em feira de adoção responsável. Casa com quintal seguro.",
             cadastrado_por_user_id=admin.id,
@@ -307,3 +307,73 @@ def seed_data():
     db.session.commit()
     click.echo(f"{OK} Animais, vacinas, prontuários, prescrições, baixas, adoção e mural populados.")
     click.echo("Seed concluído.")
+
+
+# --------------------------------------------------------------------------------------------
+# CP-01: cifragem dos dados pessoais já existentes (ver docs/sdd/CP01_NUCLEO_SPEC.md, REQ-17)
+# --------------------------------------------------------------------------------------------
+
+def _campos_backfill():
+    from app.utils.pii import normalizar_cpf, normalizar_telefone
+    return (
+        (NonEligiblePerson, "cpf_legado", "cpf_cifrado", "cpf_bidx", "cpf", normalizar_cpf),
+        (NonEligiblePerson, "telefone_legado", "telefone_cifrado", "telefone_bidx", "tel", normalizar_telefone),
+        (Adoption, "adotante_cpf_legado", "adotante_cpf_cifrado", "adotante_cpf_bidx", "cpf", normalizar_cpf),
+        (Adoption, "adotante_endereco_legado", "adotante_endereco_cifrado", None, None, None),
+    )
+
+
+@click.command("pii-backfill")
+@click.option("--dry-run", is_flag=True, help="Só conta o que seria cifrado, sem gravar nada.")
+@with_appcontext
+def pii_backfill(dry_run):
+    """Cifra CPF, telefone e endereço legados SEM apagar o valor em claro.
+
+    Idempotente: registros já cifrados são ignorados. Depois de gravar, decifra tudo de novo e
+    confere com o valor em claro; qualquer divergência aborta com erro (nada fica pela metade).
+    A remoção das colunas em claro é feita depois, pela migração 0003b.
+    """
+    from app.models.pii_mixin import preencher_pii_de_legado
+    from app.services.audit import log_audit_event
+    from app.utils.crypto import decifrar_pii, indice_cego
+    from app.utils.pii import normalizar_nome
+
+    contagens = {}
+    for modelo, legado, cifrado, bidx, dominio, normalizar in _campos_backfill():
+        rotulo = f"{modelo.__tablename__}.{legado}"
+        pendentes = modelo.query.filter(getattr(modelo, legado).isnot(None),
+                                        getattr(modelo, cifrado).is_(None)).all()
+        contagens[rotulo] = 0
+        for obj in pendentes:
+            if dry_run or preencher_pii_de_legado(obj, legado, cifrado, bidx, dominio, normalizar):
+                contagens[rotulo] += 1
+
+    sem_nome_bidx = NonEligiblePerson.query.filter(NonEligiblePerson.nome_bidx.is_(None)).all()
+    contagens["non_eligible_people.nome_bidx"] = len(sem_nome_bidx)
+    if not dry_run:
+        for pessoa in sem_nome_bidx:
+            pessoa.nome_bidx = indice_cego("nome", normalizar_nome(pessoa.nome))
+
+    for rotulo, total in contagens.items():
+        click.echo(f"{'[simulacao]' if dry_run else OK} {rotulo}: {total} registro(s)")
+    if dry_run:
+        db.session.rollback()
+        return
+
+    db.session.flush()
+    divergencias = 0
+    for modelo, legado, cifrado, _bidx, _dominio, normalizar in _campos_backfill():
+        for obj in modelo.query.filter(getattr(modelo, legado).isnot(None)).all():
+            esperado = normalizar(getattr(obj, legado)) if normalizar else str(getattr(obj, legado)).strip()
+            if esperado and decifrar_pii(getattr(obj, cifrado)) != esperado:
+                divergencias += 1
+    if divergencias:
+        db.session.rollback()
+        raise click.ClickException(f"{divergencias} registro(s) não conferem após cifrar. Nada foi gravado.")
+
+    log_audit_event(acao="PII_BACKFILL", entidade="Sistema",
+                    detalhes="Cifragem de dados pessoais legados: " +
+                             ", ".join(f"{k}={v}" for k, v in contagens.items()),
+                    commit=False)
+    db.session.commit()
+    click.echo(f"{OK} Conferência concluída: todos os valores cifrados decifram igual ao original.")

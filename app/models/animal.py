@@ -106,6 +106,18 @@ class Animal(db.Model):
             return False
         return novo in cls.VALID_STATUSES
 
+    # Superfície pública (CP-01): ÚNICOS campos que podem sair para visitantes sem login.
+    # Origem do resgate, motivo, baia, código interno e cuidados de saúde nunca saem.
+    # Qualquer campo novo aqui exige revisão e passa pelo teste canário anti-vazamento.
+    PUBLIC_ANIMAL_STRICT_KEYS = (
+        "nome", "sexo", "porte", "idade_estimada", "raca", "pelagem", "foto_url",
+        "is_castrado", "is_idoso",
+    )
+
+    def to_public_dict(self):
+        """Serialização para visitantes sem login: só `PUBLIC_ANIMAL_STRICT_KEYS`."""
+        return {campo: getattr(self, campo) for campo in self.PUBLIC_ANIMAL_STRICT_KEYS}
+
     @property
     def is_frozen(self):
         """RN05: Animais adotados ou óbito têm cadastros congelados."""

@@ -207,3 +207,11 @@ def test_constraints_existem_no_sqlite(app):
                  "ck_prescriptions_periodo", "ck_vaccinations_reforco_apos_aplicacao",
                  "uq_medication_logs_dose", "uq_announcement_acks_aviso_usuaria"]:
         assert nome in sql
+
+
+# ---------------------------------------------------------------- R8 (CP-01): FKs no SQLite
+
+def test_sqlite_confere_chave_estrangeira(app):
+    """Paridade com o PostgreSQL: vacina de animal inexistente é recusada pelo banco."""
+    assert db.session.execute(text("PRAGMA foreign_keys")).scalar() == 1
+    _falha_ao_gravar(Vaccination(animal_id=999999, nome_vacina="V10", data_aplicacao=HOJE))
