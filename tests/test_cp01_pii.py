@@ -160,15 +160,30 @@ def test_busca_exata_lista_sigilosa(admin_client):
         admin_client.post("/api/admin/nao-aptos", json={
             "nome": nome, "motivo_impedimento": "x", "cpf": cpf, "telefone": tel})
 
-    def total(consulta):
-        return admin_client.get(f"/api/admin/nao-aptos?{consulta}").get_json()["total"]
+    def buscar(filtro):
+        return admin_client.post("/api/admin/nao-aptos/busca", json=filtro)
 
-    assert total(f"cpf={CPF_B}") == 1 and total("cpf=99988877714") == 1
-    assert total("telefone=(41) 3333-4444") == 1
-    assert total("q=mar") == 1 and total("q=") == 2
-    assert total("q=41999") == 0  # números no `q` não procuram mais CPF/telefone
-    for consulta in ("cpf=999.888", "cpf=52998224700", "telefone=4199", f"cpf={CPF_A}&telefone=4133334444"):
+    def total(filtro):
+        return buscar(filtro).get_json()["total"]
+
+    assert total({"cpf": CPF_B}) == 1 and total({"cpf": "99988877714"}) == 1
+    assert total({"telefone": "(41) 3333-4444"}) == 1
+    assert total({"q": "mar"}) == 1
+    assert admin_client.get("/api/admin/nao-aptos").get_json()["total"] == 2
+    assert total({"q": "41999"}) == 0  # números no `q` não procuram mais CPF/telefone
+    for filtro in ({"cpf": "999.888"}, {"cpf": "52998224700"}, {"telefone": "4199"},
+                   {"cpf": CPF_A, "telefone": "4133334444"}, {}, {"q": ""}):
+        assert buscar(filtro).status_code == 400, filtro
+
+
+def test_busca_com_dado_pessoal_na_url_e_recusada(admin_client):
+    for consulta in ("cpf=52998224725", "telefone=41999998888", "q=Marcio"):
         assert admin_client.get(f"/api/admin/nao-aptos?{consulta}").status_code == 400
+
+
+def test_busca_exclusiva_da_administradora(vol_client):
+    # Sem login (401) já é coberto por test_toda_rota_interna_exige_login
+    assert vol_client.post("/api/admin/nao-aptos/busca", json={"q": "a"}).status_code == 403
 
 
 # REQ-17 ------------------------------------------------------------------------------------
@@ -238,3 +253,78 @@ def test_auditoria_sem_pii(admin_client):
     for proibido in ("Fulano", "Beltrana", "Ciclano", "Sigiloso", "Rua Secreta",
                      "99988877714", "999.888.777-14", "52998224725", "41977776666", "41955554444", "41933332222"):
         assert proibido not in detalhes, proibido
+
+
+# Parecer do gatekeeper (CP-01): bloqueador do backfill e mutantes sobreviventes ----------------
+
+def test_pii_backfill_recusa_rodar_sem_chaves_reais(app):
+    """Sem PII_* explícitas o comando cifraria com a chave derivada de dev e desligaria a RN15."""
+    _inserir_legados()
+    app.config["PII_FERNET_KEYS"] = ""
+    resultado = app.test_cli_runner().invoke(pii_backfill)
+    assert resultado.exit_code != 0
+    assert "PII_FERNET_KEYS" in resultado.output
+    assert _linha("SELECT cpf_cifrado, nome_bidx FROM non_eligible_people") == {"cpf_cifrado": None, "nome_bidx": None}
+
+
+def test_pii_backfill_recusa_chave_de_exemplo_fora_dos_testes(app):
+    _inserir_legados()
+    app.config.update(TESTING=False, PII_HMAC_KEY="substitua-por-segredo-aleatorio-minimo-32-caracteres")
+    try:
+        resultado = app.test_cli_runner().invoke(pii_backfill)
+    finally:
+        app.config["TESTING"] = True
+    assert resultado.exit_code != 0
+    assert _linha("SELECT cpf_cifrado FROM non_eligible_people")["cpf_cifrado"] is None
+
+
+def test_pii_backfill_mostra_e_audita_impressao_das_chaves(app):
+    from app.utils.crypto import impressao_digital_pii
+    _inserir_legados()
+    resultado = app.test_cli_runner().invoke(pii_backfill)
+    impressao = impressao_digital_pii(app.config)
+    assert f"fernet={impressao['fernet']}" in resultado.output and f"hmac={impressao['hmac']}" in resultado.output
+    log = AuditLog.query.filter_by(acao="PII_BACKFILL").one()
+    assert impressao["hmac"] in log.detalhes
+    assert app.config["PII_HMAC_KEY"] not in log.detalhes  # a impressão não é a chave
+
+
+@pytest.mark.parametrize("estragar", ["decifrar", "indice"])
+def test_pii_backfill_aborta_sem_gravar_quando_a_conferencia_falha(app, monkeypatch, estragar):
+    import app.utils.crypto as crypto
+    _inserir_legados()
+    if estragar == "decifrar":
+        monkeypatch.setattr(crypto, "decifrar_pii", lambda cifra: "valor-diferente")
+    else:
+        # A gravação usa um índice errado; a conferência recalcula com o correto e precisa notar.
+        import app.models.pii_mixin as pii_mixin
+        monkeypatch.setattr(pii_mixin, "indice_cego", lambda dominio, valor: "0" * 64)
+    resultado = app.test_cli_runner().invoke(pii_backfill)
+    assert resultado.exit_code != 0 and "não conferem" in resultado.output
+    db.session.rollback()
+    assert _linha("SELECT cpf_cifrado FROM non_eligible_people")["cpf_cifrado"] is None
+    assert AuditLog.query.filter_by(acao="PII_BACKFILL").count() == 0
+
+
+def test_rn15_prioridade_cpf_antes_de_telefone(app):
+    from app.services.lista_sigilosa import MOTIVO_CPF, MOTIVO_TELEFONE, procurar
+    db.session.add_all([
+        NonEligiblePerson(nome="Pelo Telefone", telefone="41999998888", motivo_impedimento="x"),
+        NonEligiblePerson(nome="Pelo CPF", cpf=CPF_A, motivo_impedimento="x"),
+    ])
+    db.session.commit()
+    motivo, registro = procurar("Ninguém", CPF_A, "41999998888")
+    assert motivo == MOTIVO_CPF and registro.nome == "Pelo CPF"
+    assert procurar("Ninguém", None, "41999998888")[0] == MOTIVO_TELEFONE
+
+
+def test_editar_registro_legado_limpa_o_valor_em_claro(admin_client):
+    db.session.execute(text(
+        "INSERT INTO non_eligible_people (nome, cpf, telefone, motivo_impedimento, created_at) "
+        "VALUES ('Legado', '111.222.333-96', '41988887777', 'antigo', '2026-01-01 00:00:00')"))
+    db.session.commit()
+    nid = NonEligiblePerson.query.one().id
+    r = admin_client.patch(f"/api/admin/nao-aptos/{nid}", json={"cpf": CPF_A, "telefone": "41977776666"})
+    assert r.status_code == 200
+    linha = _linha("SELECT cpf, telefone, cpf_cifrado FROM non_eligible_people")
+    assert linha["cpf"] is None and linha["telefone"] is None and linha["cpf_cifrado"]

@@ -120,11 +120,14 @@ def problemas_chaves_pii(config) -> list[str]:
     if not chaves:
         erros.append("PII_FERNET_KEYS ausente (chave Fernet para cifrar CPF e telefone).")
     else:
+        from app.config import CHAVE_FERNET_DE_TESTE
         try:
             for chave in chaves:
                 Fernet(chave.encode("ascii"))
         except (ValueError, TypeError):
             erros.append("PII_FERNET_KEYS contém chave Fernet inválida.")
+        if CHAVE_FERNET_DE_TESTE in chaves:
+            erros.append("PII_FERNET_KEYS contém a chave pública dos testes: gere uma chave nova.")
     hmac_key = (config.get("PII_HMAC_KEY") or "").strip()
     if len(hmac_key) < 32:
         erros.append("PII_HMAC_KEY ausente ou curta (mínimo de 32 caracteres aleatórios).")
@@ -144,6 +147,24 @@ def parece_valor_de_exemplo(valor: str | None) -> bool:
     """True para segredos copiados do `.env.example` ou da documentação, que nunca valem em produção."""
     texto = (valor or "").strip().lower()
     return any(marca in texto for marca in _MARCAS_DE_EXEMPLO)
+
+
+def chaves_pii_explicitas(config) -> bool:
+    """True quando as duas chaves PII foram configuradas (sem recorrer à chave derivada de dev)."""
+    return bool((config.get("PII_FERNET_KEYS") or "").strip() and (config.get("PII_HMAC_KEY") or "").strip())
+
+
+def impressao_digital_pii(config) -> dict:
+    """Identificação curta e NÃO secreta das chaves PII em uso (12 primeiros hex do SHA-256).
+
+    Serve para conferir que o backfill rodado na máquina da operadora usou as mesmas chaves da
+    Vercel: a produção registra a mesma impressão no log ao subir. Não permite recuperar a chave.
+    """
+    def resumo(valor):
+        return hashlib.sha256(f"gapar-impressao:{valor}".encode("utf-8")).hexdigest()[:12] if valor else "ausente"
+
+    primaria = next((c.strip() for c in (config.get("PII_FERNET_KEYS") or "").split(",") if c.strip()), "")
+    return {"fernet": resumo(primaria), "hmac": resumo((config.get("PII_HMAC_KEY") or "").strip())}
 
 
 def cifrar_pii(texto: str | None) -> str | None:

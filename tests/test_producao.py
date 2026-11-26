@@ -1,12 +1,14 @@
 """Checkpoint 7: a configuração de produção recusa subir insegura e se adapta ao proxy da Vercel."""
 import pytest
+from cryptography.fernet import Fernet
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app import create_app
 from app.config import ProductionConfig
 
 CHAVE_FORTE = "x" * 48
-PG = "postgresql+psycopg2://u:p@db.exemplo.supabase.co:6543/postgres"
+PG = "postgresql+psycopg2://u:p@db.supabase.co:6543/postgres"
+CHAVE_FERNET_PRODUCAO = Fernet.generate_key().decode()
 
 
 @pytest.fixture
@@ -20,7 +22,7 @@ def producao_valida(monkeypatch):
     monkeypatch.setattr(ProductionConfig, "GOOGLE_CLIENT_SECRET", "segredo")
     monkeypatch.setattr(ProductionConfig, "UPLOAD_FOLDER", "")
     monkeypatch.setattr(ProductionConfig, "PUBLIC_BASE_URL", "")
-    monkeypatch.setattr(ProductionConfig, "PII_FERNET_KEYS", "dGVzdGUtZ2FwYXItY2hhdmUtcGlpLTMyLWJ5dGVzISE=")
+    monkeypatch.setattr(ProductionConfig, "PII_FERNET_KEYS", CHAVE_FERNET_PRODUCAO)
     monkeypatch.setattr(ProductionConfig, "PII_HMAC_KEY", "h" * 40)
 
 
@@ -50,6 +52,9 @@ def test_producao_completa_sobe_segura(producao_valida):
      "SECRET_KEY"),
     (lambda mp: mp.setattr(ProductionConfig, "TURNSTILE_SECRET_KEY", "1x0000000000000000000000000000000AA"),
      "TURNSTILE_SECRET_KEY"),
+    # A chave Fernet pública dos testes nunca vale em produção
+    (lambda mp: mp.setattr(ProductionConfig, "PII_FERNET_KEYS", "dGVzdGUtZ2FwYXItY2hhdmUtcGlpLTMyLWJ5dGVzISE="),
+     "chave pública dos testes"),
 ])
 def test_producao_incompleta_falha_cedo(producao_valida, monkeypatch, ajuste, trecho):
     ajuste(monkeypatch)

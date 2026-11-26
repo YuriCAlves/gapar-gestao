@@ -42,9 +42,11 @@ export const CONFIG_PUBLICA_FECHADA: ConfigPublica = {
 };
 
 /**
- * Busca na lista sigilosa (D2) — GET /api/admin/nao-aptos (só Administradora).
- * Envie UM dos parâmetros: `q` (nome, parcial), `cpf` (11 dígitos) ou `telefone` (10–11 dígitos).
- * CPF/telefone incompletos ou inválidos -> 400. A resposta traz `cpf` formatado (000.000.000-00).
+ * Busca na lista sigilosa (D2) — POST /api/admin/nao-aptos/busca (só Administradora).
+ * Corpo JSON com UM filtro: `q` (nome, parcial), `cpf` (11 dígitos) ou `telefone` (10–11 dígitos).
+ * Dado pessoal NUNCA vai na URL: GET /api/admin/nao-aptos lista tudo e recusa (400) `?q`, `?cpf`
+ * e `?telefone`. CPF/telefone incompletos ou inválidos, nenhum filtro ou mais de um -> 400.
+ * Resposta: { sucesso, total, nao_aptos[] }, com `cpf` formatado (000.000.000-00).
  */
 export type BuscaListaSigilosa = { q: string } | { cpf: string } | { telefone: string };
 

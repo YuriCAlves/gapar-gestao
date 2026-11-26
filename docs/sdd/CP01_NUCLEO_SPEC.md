@@ -33,12 +33,12 @@ Preparar o back-end para receber visitantes **sem login** sem abrir nenhuma rota
 | **REQ-09** | A migração `0003a` sobe e desce no SQLite sem erro e só **adiciona** estruturas. | `test_cp01_migracoes::test_upgrade_downgrade_0003a`. |
 | **REQ-10** | PII com chave própria: `MultiFernet(PII_FERNET_KEYS)`, aceita várias chaves (rotação), a primeira cifra. Os tokens Google continuam na chave antiga (`FERNET_KEY`/`SECRET_KEY`). | `test_cp01_pii::test_rotacao_multifernet`, `test_tokens_google_continuam_legiveis`. |
 | **REQ-11** | Blind index `HMAC-SHA256(PII_HMAC_KEY, "<dominio>:v1:<normalizado>")`, determinístico, separado por domínio (`cpf`, `tel`, `nome`). | `test_blind_index_deterministico_e_por_dominio`. |
-| **REQ-12** | Em produção, faltar `PII_FERNET_KEYS` (chave Fernet inválida) ou `PII_HMAC_KEY` (< 32 caracteres) impede a subida. Em dev/testes há chave derivada, com aviso. | `test_producao_exige_chaves_pii`. |
+| **REQ-12** | Em produção, faltar `PII_FERNET_KEYS` (ou chave inválida, ou a chave pública dos testes) ou `PII_HMAC_KEY` (< 32 caracteres ou valor de exemplo) impede a subida. Em dev/testes há chave derivada, com aviso. A produção registra no log a impressão digital (não secreta) das chaves. | `test_producao.py::test_producao_incompleta_falha_cedo` (casos PII). |
 | **REQ-13** | `NonEligiblePerson.cpf`/`telefone` e `Adoption.adotante_cpf`/`adotante_endereco` são gravados **só** cifrados (coluna em claro fica `NULL` em gravação nova). A leitura é transparente: usa a cifra e, sem ela, o valor legado. | `test_gravacao_nova_nao_fica_em_claro`, `test_leitura_de_registro_legado`. |
 | **REQ-14** | RN15 consulta pela blind index, com as mesmas mensagens e prioridade de hoje (CPF → telefone → nome normalizado). Registros legados ainda sem índice continuam sendo conferidos. | Testes RN15 existentes + `test_rn15_registro_legado_sem_indice`. |
 | **REQ-15** | **D2:** CPF aceito só com 11 dígitos e dígito verificador válido; telefone só com 10 ou 11 dígitos, DDD 11–99, e celular (11 dígitos) começando por 9. Vale para a lista sigilosa e a adoção. Saída de CPF formatada `000.000.000-00`. | `test_cp01_pii::test_validacao_cpf_telefone` (parametrizado). |
-| **REQ-16** | **D2:** busca da lista sigilosa: `?q=` só por nome (parcial); `?cpf=` e `?telefone=` só exatos, via blind index. Número incompleto/inválido → `400`. | `test_busca_exata_lista_sigilosa`. |
-| **REQ-17** | `flask pii-backfill [--dry-run]` cifra os registros legados **sem apagar** o valor em claro, confere a decifração, é idempotente e audita só contagens. | `test_pii_backfill`. |
+| **REQ-16** | **D2:** busca da lista sigilosa por `POST /api/admin/nao-aptos/busca` com UM filtro no corpo: `q` (nome, parcial), `cpf` ou `telefone` (exatos, via blind index). Dado pessoal nunca vai na URL: `GET` com `?q/?cpf/?telefone` → `400`. Número incompleto/inválido → `400`. | `test_busca_exata_lista_sigilosa`, `test_busca_com_dado_pessoal_na_url_e_recusada`. |
+| **REQ-17** | `flask pii-backfill [--dry-run]` só roda com `PII_FERNET_KEYS` e `PII_HMAC_KEY` explícitas (nunca a chave derivada de dev; fora dos testes, também nunca valor de exemplo), mostra a impressão digital das chaves, cifra os legados **sem apagar** o valor em claro, confere a decifração **e o índice cego**, é idempotente e audita só contagens + impressão. Divergência → aborta sem gravar. | `test_pii_backfill*`. |
 | **REQ-18** | Nenhum `AuditLog.detalhes` novo contém nome, CPF, telefone ou endereço de pessoa (adotante ou lista sigilosa). | `test_auditoria_sem_pii`. |
 | **REQ-19** | `rate_limit_service.consumir(acao, identificador, limite, janela)` é atômico (upsert), não guarda IP em claro (só HMAC) e reinicia a contagem na janela seguinte. | `test_cp01_servicos::test_rate_limit_*`. |
 | **REQ-20** | `turnstile_service.verificar(token, acao)` é fail-closed: erro de rede, `success=false`, ação diferente ou token ausente → `False`; sem segredo em produção → `503`; em dev/testes sem segredo → passa, com aviso. | `test_cp01_servicos::test_turnstile_*` (requests mockado). |
@@ -123,10 +123,22 @@ Preparar o back-end para receber visitantes **sem login** sem abrir nenhuma rota
 | Gate | Resultado |
 | :--- | :--- |
 | 1 · Migração | `0003a` sobe → desce → sobe em SQLite (subprocesso `flask db`); o downgrade **se recusa** a rodar quando há dado só cifrado; o modelo e a migração têm as mesmas colunas; toda tabela tem RLS. |
-| 2 · `pytest` | **261 verdes** (191 originais + 70 novos). Testes antigos ajustados só onde usavam CPF/telefone inválidos (D2) ou a busca parcial de CPF (D2). |
+| 2 · `pytest` | **Ver §6.1** (191 originais + novos do CP-01). Testes antigos ajustados só onde usavam CPF/telefone inválidos (D2) ou a busca parcial de CPF (D2). |
 | 3 · Canário | Verde. **Teste de mutação:** quebrar a checagem do blueprint, a interface de sessão ou a allowlist do animal deixa os testes vermelhos. |
 | 4 · Front | `tsc --noEmit` ok, `vitest` ok, `npm run build` ok. |
 | R8 | `PRAGMA foreign_keys = ON` no SQLite ligado sem quebrar a suíte; teste `test_sqlite_confere_chave_estrangeira`. |
+
+### 6.1. Correções do parecer do gatekeeper (REPROVADO → reenviado)
+
+| Achado | Correção |
+| :--- | :--- |
+| 🔴 1 · backfill com chave derivada de dev desligaria a RN15 | O comando exige chaves explícitas, recusa valor de exemplo fora dos testes, mostra a impressão digital (comparável ao log `Chaves PII em uso` da produção) e confere também o índice cego. |
+| 2 · `PRAGMA foreign_keys` nas migrações do SQLite | `migrations/env.py` desliga o PRAGMA durante a migração. Teste com migração temporária que recria `animals`, que reprova sem a correção. |
+| 3 · chave Fernet de teste aceita em produção | `CHAVE_FERNET_DE_TESTE` é recusada por `problemas_chaves_pii`. |
+| 4 · canário parcial | Toda rota `public.*` precisa de cobertura (automática ou em `CASOS_PUBLICOS_EXPLICITOS`); saúde e avisos recebem honeytokens; CPF e telefone são procurados formatados e sem formatação. |
+| 5 · mutantes sobreviventes | Testes novos: prioridade CPF→telefone, edição de legado limpa o valor em claro, backfill aborta em divergência, allowlist congelada, `no-store` em erro, `..`/`//` com rota pública simulada. |
+| 6 · CPF na URL | Busca passou para `POST /api/admin/nao-aptos/busca`; `GET` com filtro → 400. |
+| 7 · `vercel.json` "do Antigravity" | Falso positivo: a alteração foi feita pelo Claude Code e entrou no mesmo commit. |
 
 **Desvios em relação ao SDD v5.0, já refletidos acima:**
 - A sessão revogada não é "limpa" em rota pública: ela é ignorada. Limpar exigiria `Set-Cookie`, o que quebraria o cache.

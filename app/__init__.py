@@ -20,6 +20,11 @@ def create_app(config_name=None):
         problemas = ProductionConfig.problemas(app.config)
         if problemas:
             raise RuntimeError("Configuração de produção incompleta: " + " ".join(problemas))
+        # Impressão (não secreta) das chaves PII: compare com a saída do `flask pii-backfill`
+        # para ter certeza de que o backfill usou as mesmas chaves da produção.
+        from .utils.crypto import impressao_digital_pii
+        impressao = impressao_digital_pii(app.config)
+        app.logger.info("Chaves PII em uso: fernet=%s hmac=%s", impressao["fernet"], impressao["hmac"])
         if not (app.config.get("SUPABASE_URL") and app.config.get("SUPABASE_SERVICE_ROLE_KEY")):
             app.logger.warning("Supabase Storage não configurado: o envio de fotos ficará indisponível.")
         # A Vercel encerra o HTTPS e repassa protocolo/host/IP nos cabeçalhos X-Forwarded-*.

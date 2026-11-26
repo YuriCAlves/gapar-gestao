@@ -97,6 +97,14 @@ def run_migrations_online():
     connectable = get_engine()
 
     with connectable.connect() as connection:
+        # SQLite: `app/extensions.py` liga `PRAGMA foreign_keys` em toda conexão (paridade com o
+        # PostgreSQL nos testes). Durante a migração ele precisa ficar desligado: o
+        # `batch_alter_table` recria a tabela (DROP + CREATE) e, com FKs ligadas, filhos com
+        # ON DELETE SET NULL/CASCADE seriam zerados ou apagados em silêncio. O PRAGMA só tem
+        # efeito fora de transação, por isso vem antes do `begin_transaction`.
+        if connection.dialect.name == "sqlite":
+            connection.exec_driver_sql("PRAGMA foreign_keys = OFF")
+            connection.commit()
         context.configure(
             connection=connection,
             target_metadata=get_metadata(),

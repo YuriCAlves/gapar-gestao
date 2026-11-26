@@ -333,10 +333,29 @@ def pii_backfill(dry_run):
     confere com o valor em claro; qualquer divergência aborta com erro (nada fica pela metade).
     A remoção das colunas em claro é feita depois, pela migração 0003b.
     """
+    from flask import current_app
+
     from app.models.pii_mixin import preencher_pii_de_legado
     from app.services.audit import log_audit_event
-    from app.utils.crypto import decifrar_pii, indice_cego
+    from app.utils.crypto import (
+        chaves_pii_explicitas, decifrar_pii, impressao_digital_pii, indice_cego, problemas_chaves_pii,
+    )
     from app.utils.pii import normalizar_nome
+
+    # Nunca cifrar com a chave derivada de desenvolvimento: o banco ficaria com cifras e índices
+    # que a produção (com as chaves reais) não reconhece, e a RN15 deixaria de achar as pessoas.
+    config = current_app.config
+    if not chaves_pii_explicitas(config):
+        raise click.ClickException(
+            "PII_FERNET_KEYS e PII_HMAC_KEY precisam estar configuradas com as MESMAS chaves da "
+            "produção (Vercel). Sem elas o comando não roda: cifraria com uma chave de desenvolvimento.")
+    if not config.get("TESTING"):
+        erros = problemas_chaves_pii(config)
+        if erros:
+            raise click.ClickException(" ".join(erros))
+    impressao = impressao_digital_pii(config)
+    click.echo(f"Chaves PII: fernet={impressao['fernet']} hmac={impressao['hmac']} "
+               "(confira com o log 'Chaves PII em uso' da produção antes de continuar)")
 
     contagens = {}
     for modelo, legado, cifrado, bidx, dominio, normalizar in _campos_backfill():
@@ -361,19 +380,28 @@ def pii_backfill(dry_run):
         return
 
     db.session.flush()
+    # Conferência: a cifra decifra no valor original E o índice cego bate com o recalculado.
     divergencias = 0
-    for modelo, legado, cifrado, _bidx, _dominio, normalizar in _campos_backfill():
+    for modelo, legado, cifrado, bidx, dominio, normalizar in _campos_backfill():
         for obj in modelo.query.filter(getattr(modelo, legado).isnot(None)).all():
             esperado = normalizar(getattr(obj, legado)) if normalizar else str(getattr(obj, legado)).strip()
-            if esperado and decifrar_pii(getattr(obj, cifrado)) != esperado:
+            if not esperado:
+                continue
+            if decifrar_pii(getattr(obj, cifrado)) != esperado:
                 divergencias += 1
+            elif bidx and getattr(obj, bidx) != indice_cego(dominio, esperado):
+                divergencias += 1
+    for pessoa in NonEligiblePerson.query.all():
+        if pessoa.nome_bidx != indice_cego("nome", normalizar_nome(pessoa.nome)):
+            divergencias += 1
     if divergencias:
         db.session.rollback()
         raise click.ClickException(f"{divergencias} registro(s) não conferem após cifrar. Nada foi gravado.")
 
     log_audit_event(acao="PII_BACKFILL", entidade="Sistema",
                     detalhes="Cifragem de dados pessoais legados: " +
-                             ", ".join(f"{k}={v}" for k, v in contagens.items()),
+                             ", ".join(f"{k}={v}" for k, v in contagens.items()) +
+                             f" (chaves fernet={impressao['fernet']} hmac={impressao['hmac']})",
                     commit=False)
     db.session.commit()
     click.echo(f"{OK} Conferência concluída: todos os valores cifrados decifram igual ao original.")

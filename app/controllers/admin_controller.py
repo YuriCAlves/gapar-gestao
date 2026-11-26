@@ -203,25 +203,42 @@ def nao_aptos():
             "nao_apto": bloqueado.to_dict()
         }), 201
 
-    # D2: `q` procura só por nome (parcial); CPF e telefone só por número completo (índice cego)
-    cpf = parse_cpf(request.args.get("cpf"), "cpf")
-    telefone = parse_telefone(request.args.get("telefone"), "telefone")
-    if cpf and telefone:
-        raise ApiError("Busca inválida", 400, "Procure por CPF ou por telefone, um de cada vez.")
-    if cpf or telefone:
-        lista = lista_sigilosa.buscar_exato(cpf=cpf, telefone=telefone)
-        lista.sort(key=lambda item: (item.created_at, item.id), reverse=True)
-    else:
-        query = NonEligiblePerson.query
-        busca = request.args.get("q", "").strip()
-        if busca:
-            query = query.filter(db.func.lower(NonEligiblePerson.nome).contains(busca.lower(), autoescape=True))
-        lista = query.order_by(NonEligiblePerson.created_at.desc(), NonEligiblePerson.id.desc()).all()
+    # Dados pessoais não vão na URL (ficariam nos logs de acesso da hospedagem): a busca é por
+    # POST /api/admin/nao-aptos/busca. Filtro na URL é recusado em vez de ignorado.
+    if any(request.args.get(campo) for campo in ("q", "cpf", "telefone")):
+        raise ApiError("Busca inválida", 400,
+                       "A busca na lista sigilosa é feita por POST /api/admin/nao-aptos/busca, "
+                       "com o filtro no corpo da requisição (dados pessoais não vão na URL).")
+    lista = NonEligiblePerson.query.order_by(NonEligiblePerson.created_at.desc(), NonEligiblePerson.id.desc()).all()
+    return _resposta_lista(lista)
+
+
+def _resposta_lista(lista):
     return jsonify({
         "sucesso": True,
         "total": len(lista),
         "nao_aptos": [item.to_dict() for item in lista]
     }), 200
+
+
+@admin_bp.route("/nao-aptos/busca", methods=["POST"])
+@admin_required
+def buscar_nao_aptos():
+    """D2: busca na lista sigilosa. Corpo com UM filtro: `q` (nome, parcial), `cpf` ou `telefone` (exatos)."""
+    data = get_payload()
+    cpf = parse_cpf(data.get("cpf"), "cpf")
+    telefone = parse_telefone(data.get("telefone"), "telefone")
+    nome = clean_text(data, "q", max_len=150, default="")
+    if sum(bool(filtro) for filtro in (cpf, telefone, nome)) != 1:
+        raise ApiError("Busca inválida", 400, "Procure por nome, CPF ou telefone, um de cada vez.")
+    if cpf or telefone:
+        lista = lista_sigilosa.buscar_exato(cpf=cpf, telefone=telefone)
+        lista.sort(key=lambda item: (item.created_at, item.id), reverse=True)
+    else:
+        lista = (NonEligiblePerson.query
+                 .filter(db.func.lower(NonEligiblePerson.nome).contains(nome.lower(), autoescape=True))
+                 .order_by(NonEligiblePerson.created_at.desc(), NonEligiblePerson.id.desc()).all())
+    return _resposta_lista(lista)
 
 
 @admin_bp.route("/nao-aptos/<int:item_id>", methods=["PATCH", "PUT"])

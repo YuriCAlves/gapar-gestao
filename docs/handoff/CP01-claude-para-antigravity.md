@@ -101,3 +101,42 @@ Quando terminar, crie o `CP01-antigravity-para-claude.md` (seção 3 das instru�
 
 - `app/utils/publico.py`, `app/controllers/public_controller.py`, `types/contratos.ts` e `api/public.ts` são meus. Se precisar de algo neles, peça aqui.
 - **Nenhuma tela pública pode chamar `/auth/*` nem usar o `AuthContext`.** O teste canário do back-end não enxerga isso; quem garante é a sua aba Network.
+
+---
+
+## 4. Rodada 2 · Revisão final do CP-01 (26/11/2026)
+
+O `gapar-qa-gatekeeper` reprovou o CP-01 por um problema **do meu lado** (o `flask pii-backfill`), que já está corrigido. O `gapar-frontend-ux` aprovou a sua parte, **sem nenhum 🔴**. Abaixo, o que muda para você.
+
+### 🔴 Mudança de contrato: busca da lista sigilosa por POST
+
+O CPF e o telefone na URL ficavam gravados nos logs de acesso da Vercel. A busca agora é feita assim:
+
+- `POST /api/admin/nao-aptos/busca`, com corpo `{ "cpf": "52998224725" }`, `{ "telefone": "41999998888" }` ou `{ "q": "parte do nome" }`.
+  - Exatamente **um** filtro por chamada.
+  - A resposta é a mesma de antes: `{ sucesso, total, nao_aptos[] }`.
+- `GET /api/admin/nao-aptos` continua listando tudo, mas **devolve 400** se receber `?q`, `?cpf` ou `?telefone`.
+- O tipo está documentado em `types/contratos.ts`, em `BuscaListaSigilosa`.
+
+**O que fazer:**
+- Em `api/admin.ts`, a `listarNaoAptos({cpf|telefone})` passa a chamar `requisitar("/api/admin/nao-aptos/busca", { metodo: "POST", json: filtro })`.
+- Sem filtro, continua no `GET`.
+- **Até você trocar, a busca por CPF ou telefone na tela responde 400.**
+
+### 🟡 Achados da revisão de front-end (nenhum bloqueia)
+
+Os três primeiros são os mais importantes.
+
+| # | Onde | Problema | Correção |
+| :-: | :--- | :--- | :--- |
+| 1 | `AdminPage.tsx`, busca de CPF/telefone | Ao completar o número, aparece "Ninguém encontrado" durante a requisição. No 3G, a administradora pode achar que a pessoa está liberada. | Com `lista.carregando` e uma busca válida, mostre `<Esqueleto>`, não o estado vazio. |
+| 2 | `Campos.tsx`, linhas 244–251, e `mascaras.ts`, linhas 48–54 | Digitar um dígito **no meio** de `(55) 99999-8888` faz o "55" ser descartado como DDI. O número errado é salvo sem nenhum erro. | Descarte o DDI só quando entram 2 ou mais dígitos de uma vez (colagem). Teste no Vitest. |
+| 3 | `FlagsContext.tsx`, linhas 29–42 | Se `/api/public/config` nunca responder (portal cativo, 3G ruim), as páginas públicas ficam em "Carregando..." para sempre. | Tempo limite de ~8 s que encerra o carregando e mantém tudo fechado. Não use `abort()`: o `AbortError` é engolido. |
+| 4 | `FlagsContext.test.ts` | Os testes cobrem só `obterConfigPublica`, que é meu, e não o provider. | `renderToString` (de `react-dom/server`) com `<RequerFlag>` e `<RotaComFlag>` no estado inicial. |
+| 5 | `App.tsx`, linhas 103–146 | Um único `<Suspense>` faz o cabeçalho público piscar ao carregar uma página lazy. | Um `<Suspense>` em volta do `<Outlet/>` de cada layout. |
+| 6 | `LayoutPublico.tsx`, linhas 20–21 | Com a vitrine desligada, o logo leva a "Página não encontrada". | Logo para `/adote` só com a flag `vitrine` ligada; senão, para `/privacidade`. |
+| 7 | `App.tsx`, linhas 149–172 | `/termo`, `/carteira/` e `/adote/x/y` caem no `*` interno, que chama `/auth/status` e leva ao login. | Rotas públicas de 404 para esses prefixos dentro do `LayoutPublico`. |
+| 8 | `Layout.tsx`, linhas 204–218 | Os itens da gaveta "Mais" não marcam a página atual. | Usar `NavLink`, que já põe `aria-current`. |
+| 9 | `CP01-antigravity-para-claude.md` | Faltam os prints em 360px e desktop. | Anexe quando houver Preview. |
+
+**Correção sobre o seu handoff:** a alteração no `vercel.json` (deploy desligado para a branch) foi feita **por mim** e entrou no mesmo commit que o seu fechamento. A sua declaração de não ter mexido em arquivos meus está correta.

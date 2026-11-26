@@ -40,6 +40,9 @@ def build_database_uri(default_sqlite_name: str) -> str:
     return f"sqlite:///{BASE_DIR / default_sqlite_name}"
 
 
+# Chave Fernet pública, usada SÓ nos testes. A produção recusa subir com ela (problemas_chaves_pii).
+CHAVE_FERNET_DE_TESTE = "dGVzdGUtZ2FwYXItY2hhdmUtcGlpLTMyLWJ5dGVzISE="
+
 FLAGS_DISPONIVEIS = ("vitrine", "estoque", "microchip", "isolamento", "pos_adocao",
                      "termo_digital", "candidaturas", "carteira", "mapa")
 
@@ -128,7 +131,7 @@ class TestingConfig(Config):
     SUPABASE_URL = ""
     SUPABASE_SERVICE_ROLE_KEY = ""
     # Chaves fixas de teste (nunca usar fora dos testes) e módulos desligados, como em produção.
-    PII_FERNET_KEYS = "dGVzdGUtZ2FwYXItY2hhdmUtcGlpLTMyLWJ5dGVzISE="
+    PII_FERNET_KEYS = CHAVE_FERNET_DE_TESTE
     PII_HMAC_KEY = "teste-gapar-hmac-indice-cego-32-caracteres-ou-mais"
     TURNSTILE_SITE_KEY = ""
     TURNSTILE_SECRET_KEY = ""

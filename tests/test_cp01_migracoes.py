@@ -96,3 +96,73 @@ def test_downgrade_recusa_perder_dado_so_cifrado(banco_migrado):
     assert resultado.returncode != 0
     assert "recusado" in (resultado.stderr + resultado.stdout)
     assert "cpf_cifrado" in _colunas(banco_migrado, "non_eligible_people")
+
+
+# Parecer do gatekeeper: PRAGMA foreign_keys desligado durante as migrações no SQLite ----------
+
+MIGRACAO_QUE_RECRIA_ANIMALS = '''"""teste: recria a tabela animals (como faria uma migração futura em batch)
+
+Revision ID: 9999_teste
+Revises: {anterior}
+"""
+from alembic import op
+import sqlalchemy as sa
+
+revision = "9999_teste"
+down_revision = "{anterior}"
+branch_labels = None
+depends_on = None
+
+
+def upgrade():
+    with op.batch_alter_table("animals", recreate="always") as batch_op:
+        batch_op.alter_column("pelagem", type_=sa.String(60))
+
+
+def downgrade():
+    pass
+'''
+
+
+def _ultima_revisao():
+    revisoes = {}
+    for arquivo in VERSOES.glob("*.py"):
+        modulo = _carregar(arquivo)
+        revisoes[modulo.revision] = modulo.down_revision
+    anteriores = set(revisoes.values())
+    return next(r for r in revisoes if r not in anteriores)
+
+
+def test_migracao_em_batch_nao_apaga_filhos_no_sqlite(tmp_path):
+    """Com FKs ligadas, recriar `animals` zeraria `announcements.animal_id` (ON DELETE SET NULL)."""
+    import shutil
+    pasta = tmp_path / "migrations"
+    shutil.copytree(RAIZ / "migrations", pasta, ignore=shutil.ignore_patterns("__pycache__"))
+    anterior = _ultima_revisao()
+    (pasta / "versions" / "9999_teste.py").write_text(
+        MIGRACAO_QUE_RECRIA_ANIMALS.replace("{anterior}", anterior), encoding="utf-8")
+
+    banco = tmp_path / "fk.db"
+    env = {**os.environ, "FLASK_ENV": "development", "DATABASE_URL": f"sqlite:///{banco.as_posix()}",
+           "PYTHONIOENCODING": "utf-8"}
+
+    def flask_db(*args):
+        return subprocess.run([sys.executable, "-m", "flask", "--app", "wsgi", "db", *args, "-d", str(pasta)],
+                              cwd=RAIZ, env=env, capture_output=True, text=True, encoding="utf-8", timeout=180)
+
+    assert flask_db("upgrade", anterior).returncode == 0
+    with sqlite3.connect(banco) as con:
+        con.execute("INSERT INTO users (id, email, role, is_active, created_at, updated_at) "
+                    "VALUES (1, 'a@gapar.org.br', 'Administradora', 1, '2026-01-01', '2026-01-01')")
+        con.execute("INSERT INTO animals (id, nome, sexo, raca, porte, data_entrada, is_castrado, is_microchipado, "
+                    "is_idoso, status_operacional, is_deleted, created_at, updated_at) VALUES "
+                    "(1, 'Rex', 'Macho', 'SRD', 'Médio', '2026-01-01', 0, 0, 0, 'disponível', 0, "
+                    "'2026-01-01', '2026-01-01')")
+        con.execute("INSERT INTO announcements (tipo, conteudo, categoria, is_urgente, is_fixado, autor_id, "
+                    "animal_id, created_at) VALUES ('TURNO', 'c', 'Geral', 0, 0, 1, 1, '2026-01-01')")
+
+    resultado = flask_db("upgrade")
+    assert resultado.returncode == 0, resultado.stderr
+    with sqlite3.connect(banco) as con:
+        assert con.execute("SELECT animal_id FROM announcements").fetchall() == [(1,)]
+        assert con.execute("SELECT COUNT(*) FROM animals").fetchone() == (1,)

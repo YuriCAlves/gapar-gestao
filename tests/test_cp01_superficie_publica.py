@@ -138,3 +138,39 @@ def test_require_feature(app):
 def test_require_feature_recusa_flag_desconhecida():
     with pytest.raises(ValueError):
         require_feature("flag-inexistente")
+
+
+# Parecer do gatekeeper: mutantes sobreviventes ------------------------------------------------
+
+@pytest.mark.parametrize("caminho", ["/api/public//config", "/api/public/../public/config", "/api/public/x/../config"])
+def test_is_public_request_recusa_caminho_nao_canonico_mesmo_com_rota_publica(app, caminho):
+    """O roteamento do werkzeug costuma barrar antes; a checagem própria vale como 2ª defesa."""
+    from flask import request
+    from app.utils.publico import is_public_request
+    regra = next(r for r in app.url_map.iter_rules() if r.endpoint == "public.config_publica")
+    with app.test_request_context(caminho):
+        request.url_rule = regra  # simula o roteamento ter aceitado o caminho
+        assert request.blueprint == "public"
+        assert is_public_request() is False
+    with app.test_request_context("/api/public/config"):
+        request.url_rule = regra
+        assert is_public_request() is True
+
+
+def test_cache_publico_nunca_guarda_erro(app):
+    from app.utils.publico import cache_publico
+
+    @cache_publico(segundos=300)
+    def falha():
+        return {"erro": "x"}, 404
+
+    @cache_publico(segundos=300)
+    def ok():
+        return {"ok": True}
+
+    with app.test_request_context("/api/public/x"):
+        erro = falha()
+        assert erro.headers["Cache-Control"] == "no-store"
+        assert "Vercel-CDN-Cache-Control" not in erro.headers
+        sucesso = ok()
+        assert "max-age=300" in sucesso.headers["Vercel-CDN-Cache-Control"]
