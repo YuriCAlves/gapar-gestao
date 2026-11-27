@@ -234,6 +234,8 @@ export interface ConflitoMicrochip {
   mensagem: string;
   animal_id: number;
   animal_nome: string;
+  /** true quando o número pertence a uma ficha EXCLUÍDA: a ficha não abre, não mostre o link. */
+  animal_excluido?: boolean;
 }
 
 // ---------------------------------------------------------------- CP-05 · Isolamento (flag "isolamento")

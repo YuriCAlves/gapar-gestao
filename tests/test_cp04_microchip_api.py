@@ -207,3 +207,37 @@ def test_nenhuma_rota_publica_da_fase_2(app):
     for regra in app.url_map.iter_rules():
         if any(p in regra.rule for p in proibidos):
             assert not regra.rule.startswith(("/api/public/", "/adote/")), regra.rule
+
+
+# Parecer do gatekeeper (Fase 2) -----------------------------------------------------------------
+
+def test_desmarcar_microchipado_com_numero_gravado_400(app, microchip, admin_client):
+    """RN21: com número gravado o animal é microchipado; desmarcar exige apagar o número antes."""
+    animal = _animal(chip="982000123456789")
+    r = admin_client.patch(f"/api/animais/{animal.id}", json={"is_microchipado": False})
+    assert r.status_code == 400
+    db.session.expire_all()
+    assert db.session.get(Animal, animal.id).is_microchipado is True
+    # Apagando o número junto, pode desmarcar
+    r = admin_client.patch(f"/api/animais/{animal.id}", json={"is_microchipado": False, "numero_microchip": None})
+    assert r.status_code == 200
+    db.session.expire_all()
+    salvo = db.session.get(Animal, animal.id)
+    assert salvo.numero_microchip is None and salvo.is_microchipado is False
+
+
+def test_conflito_com_ficha_excluida_avisa(app, microchip, admin_client):
+    dono = _animal("Antigo", chip="982000123456789")
+    dono.is_deleted = True
+    db.session.commit()
+    r = _criar(admin_client, porte="Médio", numero_microchip="982000123456789")
+    assert r.status_code == 409
+    corpo = r.get_json()
+    assert corpo["animal_excluido"] is True and corpo["animal_id"] == dono.id
+    assert "excluída" in corpo["mensagem"]
+
+
+def test_conflito_com_ficha_ativa_marca_nao_excluida(app, microchip, admin_client):
+    _animal("Ativo", chip="982000123456780")
+    corpo = _criar(admin_client, porte="Médio", numero_microchip="982000123456780").get_json()
+    assert corpo["animal_excluido"] is False

@@ -384,3 +384,21 @@ def test_query_abertos_e_historico(app, contar_consultas):
     _encerrar(IsolationRecord.aberto_do_animal(a.id))
     _isolar(a, motivo="Segundo", inicio=HOJE + timedelta(days=5))
     assert [r.motivo for r in IsolationRecord.query_do_animal(a.id)] == ["Segundo", "Suspeita de cinomose"]
+
+
+# Parecer do gatekeeper (Fase 2): o evento do gatilho e o where do modelo precisam ser conferidos
+
+def test_migracao_0007_gatilhos_nos_eventos_certos():
+    """Trocar BEFORE DELETE por BEFORE INSERT bloquearia todo cadastro e liberaria a exclusão."""
+    fonte = MIGRACAO.read_text(encoding="utf-8")
+    assert "_sem_delete BEFORE DELETE ON {TABELA} " in fonte
+    assert "_sem_truncate BEFORE TRUNCATE ON {TABELA} " in fonte
+    assert "BEFORE INSERT" not in fonte and "BEFORE UPDATE" not in fonte
+
+
+def test_modelo_declara_o_indice_parcial_nos_dois_dialetos():
+    """Sem `postgresql_where` no modelo, o autogenerate do Alembic criaria um UNIQUE global no PG."""
+    indice = next(i for i in IsolationRecord.__table__.indexes if i.name == "uq_isolation_aberto_por_animal")
+    assert indice.unique
+    assert str(indice.dialect_options["postgresql"]["where"]) == "fim_real IS NULL"
+    assert str(indice.dialect_options["sqlite"]["where"]) == "fim_real IS NULL"

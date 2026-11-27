@@ -40,8 +40,11 @@ _ID = sa.bindparam("id", type_=sa.Integer)
 
 # `round(..., 2)`: no SQLite o NUMERIC vira REAL; o arredondamento evita resíduo de ponto
 # flutuante (0,30 - 0,10 - 0,10 - 0,10 = -0,0000000000000000277). No PostgreSQL é exato.
+# A soma também é condicional: NUMERIC(10,2) não comporta mais que 99.999.999,99 (no SQLite o
+# valor passaria em silêncio; no PostgreSQL viraria DataError).
 _SQL_SOMAR = sa.text(
-    "UPDATE inventory_batches SET saldo_atual = round(saldo_atual + :q, 2) WHERE id = :id"
+    "UPDATE inventory_batches SET saldo_atual = round(saldo_atual + :q, 2) "
+    "WHERE id = :id AND saldo_atual + :q <= 99999999.99"
 ).bindparams(_Q, _ID)
 _SQL_SUBTRAIR = sa.text(
     "UPDATE inventory_batches SET saldo_atual = round(saldo_atual - :q, 2) "
@@ -108,6 +111,9 @@ def movimentar(lote, tipo, quantidade, motivo, *, user_id=None, animal_id=None,
         resultado = db.session.execute(_SQL_SOMAR, parametros)
     else:
         resultado = db.session.execute(_SQL_SUBTRAIR, parametros)
+    if resultado.rowcount != 1 and tipo in InventoryMovement.TIPOS_QUE_SOMAM:
+        raise ApiError("Saldo máximo excedido", 400,
+                       "O saldo do lote não pode passar de 99.999.999,99. Confira a quantidade.")
     if resultado.rowcount != 1:
         raise ApiError("Saldo insuficiente", 409,
                        "O saldo deste lote não é suficiente para esta saída; o saldo nunca fica negativo (RN18).")

@@ -55,10 +55,19 @@ def _numero_microchip(data):
 
 
 def _conflito_microchip(dono):
-    """409 `ConflitoMicrochip`: aponta a ficha que já usa o número (só para usuária logada)."""
+    """409 `ConflitoMicrochip`: aponta a ficha que já usa o número (só para usuária logada).
+
+    O UNIQUE vale também para fichas excluídas (D1). Nesse caso a ficha não abre (404), então a
+    mensagem diz isso e `animal_excluido=True` deixa a tela esconder o link.
+    """
+    if dono.is_deleted:
+        return ApiError("Microchip já cadastrado", 409,
+                        f"Este microchip pertence à ficha excluída de {dono.nome} (#{dono.id}). "
+                        "Fale com a administração para liberar o número.",
+                        animal_id=dono.id, animal_nome=dono.nome, animal_excluido=True)
     return ApiError("Microchip já cadastrado", 409,
                     f"Este microchip já está cadastrado na ficha de {dono.nome}.",
-                    animal_id=dono.id, animal_nome=dono.nome)
+                    animal_id=dono.id, animal_nome=dono.nome, animal_excluido=False)
 
 
 def _checar_microchip_livre(numero, animal_id=None):
@@ -343,6 +352,11 @@ def update_animal(animal_id):
     alterados.sort(key=lambda campo: campo == "numero_microchip")
     for campo in alterados:
         setattr(animal, campo, novos[campo])
+
+    # RN21: com número de microchip gravado, o animal é microchipado. Desmarcar exige apagar o número.
+    if animal.numero_microchip and not animal.is_microchipado:
+        raise ApiError("Microchip inconsistente", 400,
+                       "Este animal tem número de microchip. Para marcá-lo como sem microchip, apague o número antes.")
 
     if alterados:
         log_audit_event(

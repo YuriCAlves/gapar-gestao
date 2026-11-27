@@ -567,3 +567,14 @@ def test_dois_consumos_simultaneos_do_ultimo_saldo_so_um_passa(tmp_path, monkeyp
         assert [m.saldo_apos for m in movimentos] == [Decimal("0")]
         db.session.remove()
         db.engine.dispose()
+
+
+# Parecer do gatekeeper (Fase 2) -----------------------------------------------------------------
+
+def test_entrada_nao_passa_do_teto_numeric(app, estoque, admin_client):
+    """NUMERIC(10,2): o saldo não passa de 99.999.999,99 (no SQLite passaria em silêncio)."""
+    lote = _lote(_item(), saldo="2")
+    r = admin_client.post(f"/api/estoque/lotes/{lote.id}/movimentos",
+                          json={"tipo": "AJUSTE_MAIS", "quantidade": "99999999.99", "motivo": "Contagem"})
+    assert r.status_code == 400 and r.get_json()["erro"] == "Saldo máximo excedido"
+    assert _saldo(lote.id) == 2

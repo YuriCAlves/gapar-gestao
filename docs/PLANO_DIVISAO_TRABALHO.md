@@ -31,9 +31,9 @@ Fica com o **Antigravity** o que é visível, testável na tela e reversível: p
 | `app/controllers/applications_controller.py` (candidaturas) | **Claude** | RN15/RN24/RN25. |
 | `app/controllers/adoptions_controller.py` (devolução, termo, carteira) | **Claude** | |
 | `app/controllers/og_controller.py` | **Antigravity** | Claude revisa o escape do HTML. |
-| `app/controllers/inventory_controller.py` (rotas) | **Antigravity** | Só chama `inventory_service`; não mexe no saldo direto. |
+| `app/controllers/inventory_controller.py` (rotas) | **Claude** | Atualizado em 27/11/2026: escrito pelo `gapar-backend-security` (spec CP03_05). |
 | `app/controllers/map_controller.py`, `scripts/geocodificar.py` | **Antigravity** | Claude revisa a restrição Admin. |
-| Rotas de isolamento e pós-adoção em `health_controller.py` / `adoptions_controller.py` | **Antigravity** | A regra RN22 já vem garantida pelo índice do Claude. |
+| `app/controllers/isolation_controller.py` e rotas de pós-adoção | **Claude** | Atualizado em 27/11/2026: escritas pelo `gapar-backend-security`. |
 | `app/views/src/**` (todas as telas e componentes) | **Antigravity** | Exceto `src/api/public.ts` e `src/types/contratos.ts` (abaixo). |
 | `app/views/src/types/contratos.ts`, `app/views/src/api/public.ts` | **Claude** | Contrato da API publicado antes da tela. |
 | `tests/test_canary_anti_leak.py`, `tests/test_db_constraints.py`, `tests/test_cp0*_*` das regras RN | **Claude** | |
