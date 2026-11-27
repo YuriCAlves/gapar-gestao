@@ -29,6 +29,17 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" },
     { "source": "/auth/(.*)", "destination": "/api/index" },
+    {
+      "source": "/adote/:slug",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|linkedinbot|slackbot|discordbot).*"
+        }
+      ],
+      "destination": "/api/index"
+    },
     { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ]
 }

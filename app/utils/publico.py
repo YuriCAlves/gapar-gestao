@@ -1,8 +1,9 @@
-"""Superfície pública da API (`/api/public/*`), CP-01.
+"""Superfície pública da API (`/api/public/*`), CP-01, e prévia Open Graph (`/adote/*`), CP-02.
 
 Regras:
 - só é pública a requisição roteada para o blueprint `public` E com caminho canônico
-  `/api/public/...` (sem `..` nem `//`). Todo o resto de `/api/*` continua exigindo sessão;
+  `/api/public/...`, ou para o blueprint `og` E com caminho canônico `/adote/...`
+  (sem `..` nem `//` nos dois casos). Todo o resto de `/api/*` continua exigindo sessão;
 - requisição pública ignora a sessão: não lê `current_user`, não grava cookie e não adiciona
   `Vary: Cookie`, para que a CDN da Vercel possa guardar a resposta em cache.
 """
@@ -15,15 +16,25 @@ from app.config import FLAGS_DISPONIVEIS as FLAGS
 
 PREFIXO_PUBLICO = "/api/public/"
 BLUEPRINT_PUBLICO = "public"
+# CP-02 (REQ-29): prévia Open Graph para robôs de redes sociais (og_controller.py, `og.preview_animal`)
+PREFIXO_OG = "/adote/"
+BLUEPRINT_OG = "og"
+
+# Blueprint público -> único prefixo de caminho aceito para ele (os dois precisam bater)
+_SUPERFICIES_PUBLICAS = {
+    BLUEPRINT_PUBLICO: PREFIXO_PUBLICO,
+    BLUEPRINT_OG: PREFIXO_OG,
+}
 
 
 def is_public_request() -> bool:
     if not has_request_context():
         return False
     caminho = request.path or ""
+    prefixo = _SUPERFICIES_PUBLICAS.get(request.blueprint)
     return (
-        request.blueprint == BLUEPRINT_PUBLICO
-        and caminho.startswith(PREFIXO_PUBLICO)
+        prefixo is not None
+        and caminho.startswith(prefixo)
         and ".." not in caminho
         and "//" not in caminho
     )

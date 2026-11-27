@@ -1,5 +1,6 @@
 from flask_login import current_user
 from flask import Blueprint, jsonify, request
+from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.health import Vaccination, Prescription, MedicalRecord
@@ -7,6 +8,7 @@ from app.utils import tempo
 from app.services.images import compress_and_save_photo
 from app.services.audit import log_audit_event
 from app.utils.decorators import admin_required
+from app.utils.slug import gerar_slug_publico
 from app.services.saude import prescription_dict, vaccine_dicts
 from app.utils.validation import (
     ApiError, clean_text, get_payload, model_text, parse_bool, parse_date, parse_float, require_choice,
@@ -313,6 +315,98 @@ def update_animal_status(animal_id):
         "sucesso": True,
         "mensagem": f"Status operacional alterado para '{novo_status}'.",
         "animal": animal.to_dict()
+    }), 200
+
+
+# Vitrine pública (CP-02, REQ-24, RN17) -------------------------------------------------------
+
+DESCRICAO_PUBLICA_MAX = 600
+TENTATIVAS_SLUG = 3
+
+
+def _booleano_estrito(data, campo):
+    """Booleano JSON de verdade (`true`/`false`); qualquer outra coisa gera 400."""
+    valor = data.get(campo)
+    if not isinstance(valor, bool):
+        raise ApiError("Valor inválido", 400, f"O campo '{campo}' deve ser verdadeiro ou falso.")
+    return valor
+
+
+def _gravar_slug_publico(animal):
+    """Primeira publicação: gera o slug e tenta de novo se colidir com o índice único.
+
+    Cada tentativa roda num SAVEPOINT, para que a colisão não desfaça a transação inteira.
+    Roda antes de qualquer outra alteração no animal: o rollback do SAVEPOINT recarrega o objeto.
+    """
+    for _ in range(TENTATIVAS_SLUG):
+        try:
+            with db.session.begin_nested():
+                animal.slug_publico = gerar_slug_publico(animal.nome)
+                db.session.flush()
+            return
+        except IntegrityError:
+            continue
+    raise ApiError("Conflito de dados", 409,
+                   "Não foi possível gerar o link público agora. Tente publicar novamente.")
+
+
+@animals_bp.route("/<int:animal_id>/vitrine", methods=["PATCH"])
+@admin_required
+def update_vitrine(animal_id):
+    """Publica ou retira o animal da vitrine pública (REQ-24). Exclusiva da Administradora.
+
+    Corpo: {publicar: bool, descricao_publica?: str|null (até 600), pausar_candidaturas?: bool}.
+    Só animal 'disponível' pode ser publicado (RN17). O slug nasce na primeira publicação e é
+    mantido ao despublicar, para que republicar devolva o mesmo link.
+    """
+    animal = Animal.query.filter_by(id=animal_id, is_deleted=False).first_or_404()
+    data = get_payload()
+
+    if "publicar" not in data:
+        raise ApiError("Campo obrigatório", 400, "O campo 'publicar' é obrigatório.")
+    novos = {"is_publicado": _booleano_estrito(data, "publicar")}
+    if "descricao_publica" in data:
+        novos["descricao_publica"] = clean_text(data, "descricao_publica", max_len=DESCRICAO_PUBLICA_MAX)
+    if "pausar_candidaturas" in data:
+        novos["pausar_candidaturas"] = _booleano_estrito(data, "pausar_candidaturas")
+
+    if novos["is_publicado"] and animal.status_operacional != Animal.STATUS_DISPONIVEL:
+        raise ApiError("Animal indisponível para a vitrine", 422,
+                       f"Só é possível publicar na vitrine um animal com status 'disponível'. "
+                       f"Este animal está com status '{animal.status_operacional}' (RN17).")
+
+    alterados = [campo for campo, valor in novos.items() if getattr(animal, campo) != valor]
+    if alterados and animal.is_frozen:
+        raise ApiError("Ficha congelada", 422,
+                       f"O animal encontra-se com status '{animal.status_operacional}'; a ficha não pode ser alterada (RN05).")
+
+    if novos["is_publicado"] and not animal.slug_publico:
+        _gravar_slug_publico(animal)
+        alterados.append("slug_publico")
+
+    for campo in alterados:
+        if campo in novos:
+            setattr(animal, campo, novos[campo])
+
+    if alterados:
+        # Auditoria só com o id e os nomes dos campos: o texto da descrição nunca entra aqui.
+        resumo = ", ".join(
+            f"{campo}={'sim' if novos[campo] else 'não'}" if isinstance(novos.get(campo), bool) else campo
+            for campo in alterados
+        )
+        log_audit_event(
+            acao="VITRINE_ATUALIZADA",
+            entidade="Animal",
+            entidade_id=animal.id,
+            detalhes=f"Vitrine do animal #{animal.id} (campos: {resumo})",
+            commit=False,
+        )
+        db.session.commit()
+
+    return jsonify({
+        "sucesso": True,
+        "mensagem": "Vitrine atualizada." if alterados else "Nada mudou na vitrine.",
+        "animal": animal.to_dict(),
     }), 200
 
 

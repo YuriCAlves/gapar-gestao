@@ -14,6 +14,7 @@ from app.extensions import db
 from app.models import AuditLog, NonEligiblePerson, User, Whitelist
 from app.models.adoption import Adoption
 from app.models.animal import Animal
+from app.utils.slug import gerar_slug_publico, slug_valido
 
 CANARIO = "CANARY_SECRET_"
 
@@ -95,8 +96,11 @@ def banco_com_canarios(app):
     db.session.add_all([admin, Whitelist(email="canary_secret_admin@gapar.org.br", role="Administradora")])
     db.session.flush()
     animal = _animal_com_canarios()
-    # Um segundo animal publicável (disponível), para que listagens públicas tenham o que mostrar
-    vitrine = _animal_com_canarios(nome="Mel")
+    # CP-02 (REQ-31): "Mel" publicada na vitrine, com canários em todos os campos internos, para que
+    # a lista e o detalhe públicos tenham de fato o que mostrar (e o que poderiam vazar).
+    vitrine = _animal_com_canarios(nome="Mel", is_publicado=True, slug_publico=gerar_slug_publico("Mel"),
+                                   descricao_publica="Mel adora passear.")
+    app.config["FEATURES"] = {**app.config["FEATURES"], "vitrine": True}
     db.session.add(Adoption(animal_id=animal.id, adotante_nome=CANARIO + "adotante", adotante_telefone="41999990000",
                             adotante_cpf="52998224725", adotante_endereco=CANARIO + "endereco",
                             observacoes=CANARIO + "obs", data_adocao=date.today()))
@@ -115,18 +119,27 @@ def banco_com_canarios(app):
                                 autor_id=admin.id))
     db.session.add(AuditLog(acao="TESTE", entidade="Teste", detalhes=CANARIO + "auditoria"))
     db.session.commit()
-    return {"slug_valido": getattr(vitrine, "slug_publico", None) or "slug-inexistente"}
+    assert slug_valido(vitrine.slug_publico)
+    return {"slug_valido": vitrine.slug_publico}
 
 
 # Rotas públicas que não são GET sem parâmetro precisam de um caso explícito aqui.
-# endpoint -> função(dados_do_banco) que devolve (método, url, json). Vazio no CP-01.
-CASOS_PUBLICOS_EXPLICITOS = {}
+# endpoint -> função(dados_do_banco) que devolve (método, url, json).
+# `public.vitrine` (GET /api/public/animais) não tem parâmetro de rota: entra como GET sem args.
+# `og.preview_animal` é do og_controller.py (Antigravity, B5): o caso só é usado quando a rota existir.
+CASOS_PUBLICOS_EXPLICITOS = {
+    "public.animal_publico": lambda dados: ("GET", f"/api/public/animais/{dados['slug_valido']}", None),
+    "og.preview_animal": lambda dados: ("GET", f"/adote/{dados['slug_valido']}", None),
+}
+
+# Blueprints da superfície pública (REQ-29): toda rota deles precisa de caso no canário.
+PREFIXOS_ENDPOINT_PUBLICO = ("public.", "og.")
 
 
 def _casos_publicos(app, dados):
     casos, sem_caso = [], []
     for regra in app.url_map.iter_rules():
-        if not regra.endpoint.startswith("public."):
+        if not regra.endpoint.startswith(PREFIXOS_ENDPOINT_PUBLICO):
             continue
         if regra.endpoint in CASOS_PUBLICOS_EXPLICITOS:
             casos.append(CASOS_PUBLICOS_EXPLICITOS[regra.endpoint](dados))
@@ -156,3 +169,22 @@ def test_rotas_publicas_sem_honeytoken(app, client, banco_com_canarios, perfil):
         assert CANARIO.lower() not in corpo.lower(), f"Vazamento de honeytoken em {metodo} {url}"
         for segredo in SEGREDOS_PESSOAIS:
             assert segredo not in corpo, f"Dado pessoal em {metodo} {url}"
+
+
+def test_canario_vitrine_mostra_o_animal_publicado(client, banco_com_canarios):
+    """Sem isto o canário passaria em branco: a lista e o detalhe precisam trazer a "Mel"."""
+    slug = banco_com_canarios["slug_valido"]
+    lista = client.get("/api/public/animais")
+    assert lista.status_code == 200
+    assert [a["slug"] for a in lista.get_json()["animais"]] == [slug]
+    detalhe = client.get(f"/api/public/animais/{slug}")
+    assert detalhe.status_code == 200
+    assert detalhe.get_json()["animal"]["nome"] == "Mel"
+    assert set(detalhe.get_json()["animal"]) == CHAVES_ANIMAL_PUBLICO
+
+
+def test_canario_cobre_lista_e_detalhe_da_vitrine(app, banco_com_canarios):
+    casos, _ = _casos_publicos(app, banco_com_canarios)
+    urls = {url for _, url, _ in casos}
+    assert "/api/public/animais" in urls
+    assert f"/api/public/animais/{banco_com_canarios['slug_valido']}" in urls
