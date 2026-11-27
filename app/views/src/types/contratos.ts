@@ -111,3 +111,166 @@ export interface CamposVitrineDaFicha {
   descricao_publica: string | null;
   pausar_candidaturas: boolean;
 }
+
+// =============================================================================================
+// CONTRATOS PREVISTOS DA FASE 2 (CP-03, CP-04, CP-05) — publicados antes do back-end para o
+// trabalho em paralelo. Podem GANHAR campos até o handoff de cada CP; nunca perder ou renomear.
+// Todas as rotas abaixo exigem login e ficam atrás da flag indicada (desligada -> 404).
+// Datas: "AAAA-MM-DD"; data-hora: ISO 8601 UTC. Quantidades: number (até 2 casas decimais).
+// =============================================================================================
+
+// ---------------------------------------------------------------- CP-03 · Estoque (flag "estoque")
+
+export type CategoriaInsumo =
+  | "Vacina" | "Medicamento" | "Vermífugo" | "Antipulgas" | "Ração" | "Insumo Clínico" | "Limpeza";
+export type UnidadeInsumo = "doses" | "comprimidos" | "ml" | "kg" | "unidades";
+export type TipoMovimento =
+  | "ENTRADA" | "SAIDA_USO" | "AJUSTE_MAIS" | "AJUSTE_MENOS" | "DESCARTE_VALIDADE" | "PERDA";
+
+export interface ItemEstoque {
+  id: number;
+  nome: string;
+  categoria: CategoriaInsumo;
+  unidade: UnidadeInsumo;
+  estoque_minimo: number;
+  /** Soma dos saldos dos lotes NÃO vencidos. */
+  saldo_total: number;
+  abaixo_do_minimo: boolean;
+  /** Validade mais próxima entre os lotes com saldo e não vencidos; null se não houver. */
+  proxima_validade: string | null;
+  is_active: boolean;
+}
+
+export interface LoteEstoque {
+  id: number;
+  item_id: number;
+  codigo_lote: string;
+  data_validade: string | null;
+  saldo_atual: number;
+  vencido: boolean;
+  /** Dias até vencer (negativo = vencido há N dias); null sem validade. */
+  vence_em_dias: number | null;
+}
+
+export interface MovimentoEstoque {
+  id: number;
+  batch_id: number;
+  tipo: TipoMovimento;
+  quantidade: number;
+  saldo_apos: number;
+  motivo: string;
+  animal_id: number | null;
+  /** Nome de quem registrou (equipe interna). */
+  registrado_por: string | null;
+  created_at: string;
+}
+
+/**
+ * GET    /api/estoque/itens?categoria=&inativos=1   -> { itens: ItemEstoque[] }          (todas)
+ * POST   /api/estoque/itens                         -> 201 { item }                       (Admin)
+ *        { nome, categoria, unidade, estoque_minimo }
+ * PATCH  /api/estoque/itens/:id                     -> { item }                           (Admin)
+ *        { nome?, estoque_minimo?, is_active? }
+ * GET    /api/estoque/itens/:id                     -> DetalheItemEstoque                 (todas)
+ * POST   /api/estoque/itens/:id/lotes               -> 201 { lote, movimento }            (Admin)
+ *        { codigo_lote, data_validade?, quantidade, motivo? }   (cria o lote com ENTRADA)
+ *        409 se o código de lote já existir nesse item (use a rota de movimentos).
+ * POST   /api/estoque/lotes/:id/movimentos          -> 201 { lote, movimento }            (Admin)
+ *        { tipo: Exclude<TipoMovimento, "SAIDA_USO">, quantidade, motivo }  motivo obrigatório
+ *        409 = saldo ficaria negativo (RN18). Movimentos nunca são editados nem apagados (RN19).
+ * GET    /api/estoque/fefo?item_id=N&quantidade=Q   -> SugestaoFefo                       (todas)
+ */
+export interface DetalheItemEstoque {
+  item: ItemEstoque;
+  /** Ordem FEFO: validade mais próxima primeiro; sem validade por último; vencidos no fim. */
+  lotes: LoteEstoque[];
+  /** Últimos 50, mais recentes primeiro. */
+  movimentos: MovimentoEstoque[];
+}
+
+export interface SugestaoFefo {
+  /** Só lotes não vencidos com saldo > 0, em ordem FEFO. */
+  lotes: LoteEstoque[];
+  /** 1º lote FEFO com saldo suficiente para `quantidade`; null se nenhum tiver. */
+  sugerido_id: number | null;
+}
+
+/**
+ * Baixa de estoque ao registrar saúde (CP-03):
+ * - POST /api/saude/vacinas/:animal_id  ganha { lote_id?: number, quantidade?: number (padrão 1) }.
+ *   Com lote_id: saída SAIDA_USO na mesma transação. 422 lote vencido (RN20), 409 saldo (RN18),
+ *   400 lote de outro tipo de item que não seja "Vacina".
+ * - POST /api/saude/medicacao/baixa/:prescription_id ganha { lote_id?: number, quantidade?: number }.
+ *   Opcional; mesmas regras.
+ * - GET /api/hoje ganha, só para Administradora com a flag ligada:
+ *   estoque: { acabando: ItemEstoque[], vencendo: LoteEstoque[] }  (vencendo = até 30 dias)
+ */
+export interface AlertasEstoqueHoje {
+  acabando: ItemEstoque[];
+  vencendo: (LoteEstoque & { item_nome: string })[];
+}
+
+// ---------------------------------------------------------------- CP-04 · Microchip (flag "microchip")
+
+/**
+ * A ficha interna do animal (to_dict) ganha `numero_microchip: string | null` (15 dígitos).
+ * - POST /api/animais e PATCH /api/animais/:id aceitam `numero_microchip` (15 dígitos; vazio/null limpa).
+ *   Preenchido -> is_microchipado vira true. 400 formato inválido.
+ *   409 número já usado: { erro, codigo, mensagem, animal_id, animal_nome } (mostre link para a ficha).
+ * - GET /api/animais/microchip/:numero -> 200 { animal: ResumoMicrochip } | 404  (leitor USB HID).
+ * - O microchip NUNCA aparece na vitrine pública.
+ */
+export interface ResumoMicrochip {
+  id: number;
+  nome: string;
+  status_operacional: string;
+  foto_url: string | null;
+  localizacao_baia: string | null;
+}
+
+export interface ConflitoMicrochip {
+  erro: string;
+  codigo: 409;
+  mensagem: string;
+  animal_id: number;
+  animal_nome: string;
+}
+
+// ---------------------------------------------------------------- CP-05 · Isolamento (flag "isolamento")
+
+export interface IsolamentoRegistro {
+  id: number;
+  animal_id: number;
+  motivo: string;
+  protocolo_cuidados: string | null;
+  data_inicio: string;
+  data_fim_prevista: string | null;
+  /** Preenchido ao encerrar; null = isolamento aberto. */
+  fim_real: string | null;
+  observacoes_alta: string | null;
+  aberto_por: string | null;
+  encerrado_por: string | null;
+  aberto: boolean;
+  created_at: string;
+}
+
+/**
+ * - GET  /api/animais/:id/isolamentos          -> { isolamentos: IsolamentoRegistro[] } (recentes 1º)
+ * - POST /api/animais/:id/isolamentos          -> 201 { isolamento }              (todas as perfis)
+ *        { motivo (≤200), protocolo_cuidados?, data_inicio? (padrão hoje), data_fim_prevista? }
+ *        409 já existe isolamento aberto (RN22); 422 animal adotado/óbito (RN05) ou excluído.
+ * - POST /api/isolamentos/:id/encerrar         -> { isolamento }                  (todas as perfis)
+ *        { observacoes_alta? }  409 já encerrado.
+ * - A ficha (to_dict) e cada item de GET /api/animais ganham:
+ *        isolamento_aberto: { id, motivo, data_inicio, data_fim_prevista } | null
+ * - GET /api/hoje ganha (flag ligada): isolamentos: (IsolamentoRegistro & { animal_nome: string })[]
+ *   (só os abertos; prioridade no topo do painel).
+ * - Animal com isolamento aberto sai da vitrine pública automaticamente (RN17 ampliada).
+ * - Kanban: usa o PATCH /api/animais/:id/status já existente (mesmas transições; nunca "adotado").
+ */
+export interface IsolamentoAbertoResumo {
+  id: number;
+  motivo: string;
+  data_inicio: string;
+  data_fim_prevista: string | null;
+}
