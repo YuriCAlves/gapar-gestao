@@ -75,7 +75,11 @@ export interface AnimalPublico {
   candidaturas_pausadas: boolean;
 }
 
-/** GET /api/public/animais?pagina=N — 12 por página, mais recentes primeiro, cache de CDN 5 min. */
+/**
+ * GET /api/public/animais?pagina=N — 12 por página, mais recentes primeiro.
+ * Cache: CDN 120 s + 60 s stale e navegador 60 s. Pior caso para um animal que saiu da vitrine
+ * (RN17) continuar aparecendo: ~4 min na lista e ~3 min no detalhe. Só a FEATURE_VITRINE liga as rotas.
+ */
 export interface PaginaVitrine {
   animais: AnimalPublico[];
   pagina: number;

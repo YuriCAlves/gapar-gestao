@@ -10,7 +10,7 @@ CP-02 (docs/sdd/CP02_VITRINE_SPEC.md, REQ-21 e REQ-23). Migração ADITIVA e rev
 1. Colunas `is_publicado` (NOT NULL, default false), `slug_publico` (VARCHAR(40), nulo),
    `descricao_publica` (TEXT, nulo) e `pausar_candidaturas` (NOT NULL, default false).
    O `server_default` preenche as linhas antigas: nenhum animal nasce publicado.
-2. CHECK `ck_animals_publicado_so_disponivel`: publicado só com status 'disponível' (RN17).
+2. CHECK `ck_animals_publicado_so_disponivel`: publicado só com status 'disponível', não excluído e com slug (RN17).
 3. Índice único `uq_animals_slug_publico` (vários NULL são permitidos nos dois bancos) e índice
    `ix_animals_vitrine (is_deleted, is_publicado, status_operacional, created_at)`.
 
@@ -42,7 +42,7 @@ COLUNAS = [
 
 CHECK_NOME = "ck_animals_publicado_so_disponivel"
 # `NOT <booleano>` vale no PostgreSQL e no SQLite (onde o booleano é 0/1).
-CHECK_CONDICAO = f"NOT is_publicado OR status_operacional = '{STATUS_DISPONIVEL}'"
+CHECK_CONDICAO = f"NOT is_publicado OR (status_operacional = '{STATUS_DISPONIVEL}' AND NOT is_deleted AND slug_publico IS NOT NULL)"
 
 # (nome, colunas, único)
 INDICES = [

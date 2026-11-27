@@ -486,3 +486,46 @@ def test_vercel_json_regex_cobre_bots_e_nao_navegadores():
         assert padrao.fullmatch(ua.upper()) and padrao.fullmatch(ua.lower())
     for ua in NAVEGADORES:
         assert not padrao.search(ua), f"Navegador desviado para o Flask: {ua}"
+
+
+# Parecer do gatekeeper (CP-02) -----------------------------------------------------------------
+
+def test_detalhe_tem_cache_curto_exato(app, client, vitrine_ligada):
+    """RN17 x CDN: um cão adotado não pode ficar horas em /adote/<slug> por cache longo."""
+    animal = _animal("Bela", publicado=True)
+    resposta = client.get(f"/api/public/animais/{animal.slug_publico}")
+    assert resposta.status_code == 200
+    assert resposta.headers["Vercel-CDN-Cache-Control"] == "max-age=60, stale-while-revalidate=60"
+
+
+@pytest.mark.parametrize("status_final", ["adotado", "óbito"])
+def test_patch_vitrine_em_ficha_congelada_da_422(admin_client, status_final):
+    """RN05: ficha adotada/óbito não muda, nem a descrição pública com publicar=false."""
+    animal = _animal("Tico", publicado=True)
+    animal.status_operacional = status_final
+    db.session.commit()
+    r = admin_client.patch(f"/api/animais/{animal.id}/vitrine", json={"publicar": False, "descricao_publica": "nova"})
+    assert r.status_code == 422
+    db.session.expire_all()
+    assert db.session.get(Animal, animal.id).descricao_publica != "nova"
+
+
+def test_banco_recusa_publicado_excluido_por_sql_direto(app):
+    """O hook RN17 de is_deleted só age pelo ORM; o CHECK segura o SQL direto."""
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+    animal = _animal("Zeca", publicado=True)
+    with pytest.raises(IntegrityError):
+        db.session.execute(text("UPDATE animals SET is_deleted = 1 WHERE id = :i"), {"i": animal.id})
+        db.session.commit()
+    db.session.rollback()
+
+
+def test_banco_recusa_publicado_sem_slug(app):
+    from sqlalchemy.exc import IntegrityError
+    animal = Animal(nome="Sem Slug", sexo="Macho", porte="Pequeno", status_operacional="disponível",
+                    is_publicado=True)
+    db.session.add(animal)
+    with pytest.raises(IntegrityError):
+        db.session.commit()
+    db.session.rollback()

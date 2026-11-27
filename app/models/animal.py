@@ -48,7 +48,7 @@ class Animal(db.Model):
         db.Index("ix_animals_is_deleted_created_at", "is_deleted", "created_at"),
         # CP-02 (REQ-23, RN17): o banco recusa animal publicado fora de 'disponível'.
         # `NOT <booleano>` vale nos dois dialetos (no SQLite o booleano é 0/1).
-        db.CheckConstraint(f"NOT is_publicado OR status_operacional = '{STATUS_DISPONIVEL}'",
+        db.CheckConstraint(f"NOT is_publicado OR (status_operacional = '{STATUS_DISPONIVEL}' AND NOT is_deleted AND slug_publico IS NOT NULL)",
                            name="ck_animals_publicado_so_disponivel"),
         # CP-02 (REQ-21): vitrine pública e link /adote/<slug>
         db.Index("ix_animals_vitrine", "is_deleted", "is_publicado", "status_operacional", "created_at"),
