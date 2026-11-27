@@ -1,3 +1,4 @@
+import re
 from datetime import date
 
 import sqlalchemy as sa
@@ -53,7 +54,17 @@ class Animal(db.Model):
         # CP-02 (REQ-21): vitrine pública e link /adote/<slug>
         db.Index("ix_animals_vitrine", "is_deleted", "is_publicado", "status_operacional", "created_at"),
         db.Index("uq_animals_slug_publico", "slug_publico", unique=True),
+        # CP-04 (REQ-38, RN21): microchip ISO 11784/11785 com 15 dígitos, em SQL ANSI (sem regex
+        # proprietária). D1: UNIQUE simples, pois o cão devolvido continua o mesmo registro.
+        db.CheckConstraint(
+            "numero_microchip IS NULL OR (length(numero_microchip) = 15 "
+            "AND ltrim(numero_microchip, '0123456789') = '')",
+            name="ck_animals_numero_microchip_formato"),
+        db.Index("uq_animals_numero_microchip", "numero_microchip", unique=True),
     )
+
+    # RN21: só dígitos ASCII (`\d` aceitaria dígitos de outros alfabetos, que o CHECK recusa).
+    MICROCHIP_RE = re.compile(r"[0-9]{15}")
 
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False, index=True)
@@ -103,6 +114,10 @@ class Animal(db.Model):
     descricao_publica = db.Column(db.Text, nullable=True)
     pausar_candidaturas = db.Column(db.Boolean, default=False, server_default=sa.false(), nullable=False)
 
+    # Microchip (CP-04, RN21). Legado: `is_microchipado=True` sem número continua válido.
+    # Preencher o número liga `is_microchipado` (ver `_rn21_microchip`); limpar não desliga.
+    numero_microchip = db.Column(db.String(15), nullable=True)
+
     # Relacionamentos. RN03/RN06: sem cascata de exclusão. O histórico do animal nunca é apagado
     # junto com ele (nem o próprio animal: a exclusão é lógica, por `is_deleted`).
     # `passive_deletes="all"` impede o SQLAlchemy de apagar ou desvincular os filhos.
@@ -110,6 +125,16 @@ class Animal(db.Model):
     medical_records = db.relationship("MedicalRecord", backref="animal", lazy="dynamic", passive_deletes="all")
     prescriptions = db.relationship("Prescription", backref="animal", lazy="dynamic", passive_deletes="all")
     adoption = db.relationship("Adoption", backref="animal", uselist=False, passive_deletes="all")
+
+    # CP-05 (REQ-43): isolamento aberto (RN22 garante no máximo um). Somente leitura; o
+    # histórico completo é o backref `isolamentos` (app/models/isolation.py). Na lista de
+    # animais, carregue em lote com `carregar_isolamentos_abertos(animais)` ou
+    # `.options(selectinload(Animal.isolamento_aberto_registro))` para não gerar N+1.
+    isolamento_aberto_registro = db.relationship(
+        "IsolationRecord",
+        primaryjoin="and_(Animal.id == foreign(IsolationRecord.animal_id), IsolationRecord.fim_real.is_(None))",
+        uselist=False, viewonly=True, lazy="select",
+    )
 
     # RN17 (REQ-22): ao deixar de estar 'disponível' ou ser excluído logicamente, o animal sai da
     # vitrine na mesma transação, qualquer que seja a rota (status, adoção, óbito, exclusão).
@@ -127,12 +152,55 @@ class Animal(db.Model):
             self.is_publicado = False
         return excluido
 
+    @validates("numero_microchip")
+    def _rn21_microchip(self, _chave, numero):
+        if isinstance(numero, str):
+            numero = numero.strip() or None
+        if numero is not None:
+            self.is_microchipado = True
+        return numero
+
+    @classmethod
+    def microchip_valido(cls, numero):
+        """RN21: exatamente 15 dígitos ASCII."""
+        # `fullmatch`: com `match` e `$`, uma quebra de linha no fim passaria.
+        return isinstance(numero, str) and bool(cls.MICROCHIP_RE.fullmatch(numero))
+
+    @classmethod
+    def buscar_por_microchip(cls, numero, incluir_excluidos=False):
+        """Animal pelo microchip, ou None. Número fora do formato não consulta o banco.
+
+        `incluir_excluidos=True` serve para a checagem de conflito (o UNIQUE vale também para
+        animais excluídos logicamente).
+        """
+        if not cls.microchip_valido(numero):
+            return None
+        consulta = cls.query.filter(cls.numero_microchip == numero)
+        if not incluir_excluidos:
+            consulta = consulta.filter(cls.is_deleted.is_(False))
+        return consulta.first()
+
+    def to_resumo_microchip(self):
+        """`ResumoMicrochip` (leitor USB HID, só para usuária logada)."""
+        return {
+            "id": self.id,
+            "nome": self.nome,
+            "status_operacional": self.status_operacional,
+            "foto_url": self.foto_url,
+            "localizacao_baia": self.localizacao_baia,
+        }
+
     @classmethod
     def _filtro_vitrine(cls):
+        # RN17 ampliada (CP-05, REQ-44): isolamento aberto tira o animal da vitrine sem mexer em
+        # `is_publicado`; ao encerrar ele volta sozinho. Import local: isolation importa animal.
+        from .isolation import IsolationRecord
+        isolado = sa.exists().where(IsolationRecord.animal_id == cls.id, IsolationRecord.fim_real.is_(None))
         return (
             cls.is_deleted.is_(False),
             cls.is_publicado.is_(True),
             cls.status_operacional == cls.STATUS_DISPONIVEL,
+            ~isolado,
         )
 
     @classmethod
@@ -218,4 +286,9 @@ class Animal(db.Model):
             "slug_publico": self.slug_publico,
             "descricao_publica": self.descricao_publica,
             "pausar_candidaturas": bool(self.pausar_candidaturas),
+            # CP-04 (REQ-38): só na ficha interna, nunca na vitrine (fora da allowlist pública)
+            "numero_microchip": self.numero_microchip,
+            # CP-05 (REQ-43, `IsolamentoAbertoResumo`)
+            "isolamento_aberto": (self.isolamento_aberto_registro.to_resumo()
+                                  if self.isolamento_aberto_registro else None),
         }

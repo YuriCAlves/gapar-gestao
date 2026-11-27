@@ -48,21 +48,33 @@ def proibir_exclusao_fisica(modelo):
     return modelo
 
 
-def tornar_imutavel(modelo):
-    """Impede alteração e exclusão de registros do modelo depois de gravados (RN16)."""
+class RegistroImutavel(AuditoriaImutavel):
+    """RN19: movimentos de estoque não podem ser alterados nem apagados (correção = ajuste).
 
-    @event.listens_for(modelo, "before_update")
-    def _bloquear_alteracao(mapper, connection, target):
-        sessao = object_session(target)
-        if sessao is None or sessao.is_modified(target, include_collections=False):
-            raise AuditoriaImutavel(
-                f"Registros de '{modelo.__tablename__}' são imutáveis (RN16)."
-            )
+    Subclasse de `AuditoriaImutavel` para cair no mesmo tratador de erro (422) do app.
+    """
 
-    @event.listens_for(modelo, "before_delete")
-    def _bloquear_exclusao(mapper, connection, target):
-        raise AuditoriaImutavel(
-            f"Registros de '{modelo.__tablename__}' são imutáveis (RN16)."
-        )
 
-    return modelo
+def tornar_imutavel(modelo=None, *, regra="RN16", excecao=AuditoriaImutavel):
+    """Impede alteração e exclusão de registros do modelo depois de gravados.
+
+    Uso: `@tornar_imutavel` (RN16, auditoria) ou
+    `@tornar_imutavel(regra="RN19", excecao=RegistroImutavel)` (movimentos de estoque).
+    """
+
+    def _aplicar(modelo):
+        mensagem = f"Registros de '{modelo.__tablename__}' são imutáveis ({regra})."
+
+        @event.listens_for(modelo, "before_update")
+        def _bloquear_alteracao(mapper, connection, target):
+            sessao = object_session(target)
+            if sessao is None or sessao.is_modified(target, include_collections=False):
+                raise excecao(mensagem)
+
+        @event.listens_for(modelo, "before_delete")
+        def _bloquear_exclusao(mapper, connection, target):
+            raise excecao(mensagem)
+
+        return modelo
+
+    return _aplicar(modelo) if modelo is not None else _aplicar

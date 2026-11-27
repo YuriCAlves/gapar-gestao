@@ -7,12 +7,15 @@ from .audit import AuditLog
 from .announcement import Announcement, AnnouncementAck
 from .whitelist import Whitelist
 from .rate_limit import RateLimitBucket
-from .base import ExclusaoFisicaProibida, AuditoriaImutavel
+from .inventory import InventoryItem, InventoryBatch, InventoryMovement
+from .isolation import IsolationRecord
+from .base import ExclusaoFisicaProibida, AuditoriaImutavel, RegistroImutavel
 
 __all__ = [
     "Whitelist",
     "ExclusaoFisicaProibida",
     "AuditoriaImutavel",
+    "RegistroImutavel",
     "User",
     "Animal",
     "MedicalRecord",
@@ -25,4 +28,8 @@ __all__ = [
     "Announcement",
     "AnnouncementAck",
     "RateLimitBucket",
+    "InventoryItem",
+    "InventoryBatch",
+    "InventoryMovement",
+    "IsolationRecord",
 ]

@@ -17,6 +17,10 @@ from app.models.animal import Animal
 from app.utils.slug import gerar_slug_publico, slug_valido
 
 CANARIO = "CANARY_SECRET_"
+# Colunas de texto com formato conferido por CHECK no banco não aceitam o honeytoken textual:
+# recebem um valor válido e reconhecível, procurado na saída como os segredos pessoais.
+# CP-04 (RN21): microchip de 15 dígitos, UNIQUE (um número por animal com canários).
+MICROCHIPS_CANARIO = ("982000000000001", "982000000000002")
 
 # Campos que NUNCA podem ir para a allowlist pública
 PROIBIDOS_NA_VITRINE = {"id", "local_resgate", "motivo_resgate", "localizacao_baia", "codigo_identificador",
@@ -31,7 +35,9 @@ def _animal_com_canarios(**fixos):
     dados = {"nome": "Rex", "sexo": "Macho", "porte": "Médio", "status_operacional": "disponível"}
     for coluna in _colunas_texto(Animal):
         attr = Animal.__mapper__.get_property_by_column(coluna).key
-        if attr not in Animal.PUBLIC_ANIMAL_STRICT_KEYS and attr not in dados:
+        if attr == "numero_microchip":
+            dados[attr] = MICROCHIPS_CANARIO[0]
+        elif attr not in Animal.PUBLIC_ANIMAL_STRICT_KEYS and attr not in dados:
             limite = getattr(coluna.type, "length", None) or 200
             dados[attr] = (CANARIO + attr)[:limite]
     dados.update(fixos)
@@ -57,6 +63,7 @@ def test_to_public_dict_so_allowlist(app):
     publico = animal.to_public_dict()
     assert set(publico) == _saida_publica(Animal.PUBLIC_ANIMAL_STRICT_KEYS) == CHAVES_ANIMAL_PUBLICO
     assert CANARIO not in json.dumps(publico, ensure_ascii=False, default=str)
+    assert MICROCHIPS_CANARIO[0] not in json.dumps(publico, ensure_ascii=False, default=str)
 
 
 def test_renomes_so_de_atributos_da_allowlist():
@@ -85,6 +92,7 @@ def test_allowlist_publica_e_exatamente_a_aprovada():
 SEGREDOS_PESSOAIS = (
     "52998224725", "529.982.247-25", "99988877714", "999.888.777-14",
     "41999990000", "(41) 99999-0000", "41988887777", "(41) 98888-7777",
+    *MICROCHIPS_CANARIO,
 )
 
 
@@ -99,7 +107,8 @@ def banco_com_canarios(app):
     # CP-02 (REQ-31): "Mel" publicada na vitrine, com canários em todos os campos internos, para que
     # a lista e o detalhe públicos tenham de fato o que mostrar (e o que poderiam vazar).
     vitrine = _animal_com_canarios(nome="Mel", is_publicado=True, slug_publico=gerar_slug_publico("Mel"),
-                                   descricao_publica="Mel adora passear.")
+                                   descricao_publica="Mel adora passear.",
+                                   numero_microchip=MICROCHIPS_CANARIO[1])
     app.config["FEATURES"] = {**app.config["FEATURES"], "vitrine": True}
     db.session.add(Adoption(animal_id=animal.id, adotante_nome=CANARIO + "adotante", adotante_telefone="41999990000",
                             adotante_cpf="52998224725", adotante_endereco=CANARIO + "endereco",
