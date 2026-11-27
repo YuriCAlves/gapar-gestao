@@ -328,3 +328,14 @@ def test_editar_registro_legado_limpa_o_valor_em_claro(admin_client):
     assert r.status_code == 200
     linha = _linha("SELECT cpf, telefone, cpf_cifrado FROM non_eligible_people")
     assert linha["cpf"] is None and linha["telefone"] is None and linha["cpf_cifrado"]
+
+
+def test_pii_backfill_aborta_se_indice_do_nome_nao_confere(app):
+    """Um nome_bidx gravado com outra chave (ou adulterado) precisa ser notado pela conferência."""
+    _inserir_legados()
+    db.session.execute(text("UPDATE non_eligible_people SET nome_bidx = :x"), {"x": "0" * 64})
+    db.session.commit()
+    resultado = app.test_cli_runner().invoke(pii_backfill)
+    assert resultado.exit_code != 0 and "não conferem" in resultado.output
+    db.session.rollback()
+    assert _linha("SELECT cpf_cifrado FROM non_eligible_people")["cpf_cifrado"] is None

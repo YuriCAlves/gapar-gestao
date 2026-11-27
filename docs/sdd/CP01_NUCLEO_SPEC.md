@@ -149,5 +149,9 @@ Preparar o back-end para receber visitantes **sem login** sem abrir nenhuma rota
 
 1. Configurar `PII_FERNET_KEYS` e `PII_HMAC_KEY` na Vercel **e** guardar uma cópia fora dela (cofre de senhas da ONG).
 2. Fazer o deploy, que aplica a migração `0003a`.
-3. Rodar `flask pii-backfill --dry-run` e depois `flask pii-backfill`.
-4. Conferir as contagens, fazer backup do Supabase e só então aplicar a `0003b` (fecho do CP-01).
+3. Conferir a **impressão digital das chaves**:
+   - abrir o log da produção na Vercel e copiar a linha `Chaves PII em uso: fernet=… hmac=…`;
+   - na máquina que vai rodar o backfill, com as mesmas chaves configuradas, rodar `flask pii-backfill --dry-run` e comparar a linha `Chaves PII: fernet=… hmac=…`;
+   - **se as impressões não forem idênticas, pare.** Uma `PII_HMAC_KEY` válida, mas diferente da que está na Vercel, passa na conferência do comando e desligaria a RN15 em produção.
+4. Com as impressões idênticas, rodar `flask pii-backfill`.
+5. Conferir as contagens, fazer backup do Supabase e só então aplicar a `0003b` (fecho do CP-01).

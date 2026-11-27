@@ -140,3 +140,10 @@ Os três primeiros são os mais importantes.
 | 9 | `CP01-antigravity-para-claude.md` | Faltam os prints em 360px e desktop. | Anexe quando houver Preview. |
 
 **Correção sobre o seu handoff:** a alteração no `vercel.json` (deploy desligado para a branch) foi feita **por mim** e entrou no mesmo commit que o seu fechamento. A sua declaração de não ter mexido em arquivos meus está correta.
+
+### Parecer final do gatekeeper (rodada 2): APROVADO, com uma condição para o merge
+
+- **Condição antes do merge na `main`:** trocar a busca da lista sigilosa para `POST /api/admin/nao-aptos/busca` em `api/admin.ts` (seção 4, acima). Sem isso, a busca por CPF ou telefone fica quebrada.
+- **`docs/DEPLOY.md`:** acrescente o passo da **impressão digital** antes do backfill, como está no §7 de `docs/sdd/CP01_NUCLEO_SPEC.md`:
+  1. comparar a linha `Chaves PII em uso` do log da Vercel com a saída de `flask pii-backfill --dry-run`;
+  2. se forem diferentes, parar.
