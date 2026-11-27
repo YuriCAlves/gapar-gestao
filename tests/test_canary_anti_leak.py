@@ -42,21 +42,36 @@ def _animal_com_canarios(**fixos):
 
 # REQ-06 ------------------------------------------------------------------------------------
 
+# Chaves de `AnimalPublico` (app/views/src/types/contratos.ts): a saída pública é exatamente esta.
+CHAVES_ANIMAL_PUBLICO = {"slug", "nome", "sexo", "porte", "idade_estimada", "raca", "pelagem", "foto_url",
+                         "is_castrado", "is_idoso", "descricao_publica", "candidaturas_pausadas"}
+
+
+def _saida_publica(atributos):
+    return {Animal.PUBLIC_ANIMAL_RENOMES.get(a, a) for a in atributos}
+
+
 def test_to_public_dict_so_allowlist(app):
     animal = _animal_com_canarios()
     publico = animal.to_public_dict()
-    assert set(publico) == set(Animal.PUBLIC_ANIMAL_STRICT_KEYS)
+    assert set(publico) == _saida_publica(Animal.PUBLIC_ANIMAL_STRICT_KEYS) == CHAVES_ANIMAL_PUBLICO
     assert CANARIO not in json.dumps(publico, ensure_ascii=False, default=str)
+
+
+def test_renomes_so_de_atributos_da_allowlist():
+    assert set(Animal.PUBLIC_ANIMAL_RENOMES) <= set(Animal.PUBLIC_ANIMAL_STRICT_KEYS)
 
 
 def test_allowlist_nao_contem_campos_internos():
     assert not PROIBIDOS_NA_VITRINE & set(Animal.PUBLIC_ANIMAL_STRICT_KEYS)
+    assert not PROIBIDOS_NA_VITRINE & _saida_publica(Animal.PUBLIC_ANIMAL_STRICT_KEYS)
 
 
-# Lista APROVADA, congelada. Acrescentar um campo público exige mudar esta lista de propósito,
-# no mesmo diff, o que obriga a revisão (inclusive de campos que não são texto, como peso/datas).
+# Lista APROVADA, congelada (atributos do modelo). Acrescentar um campo público exige mudar esta
+# lista de propósito, no mesmo diff, o que obriga a revisão (inclusive de campos que não são texto,
+# como peso/datas). CP-02: slug_publico, descricao_publica e pausar_candidaturas (REQ-26).
 ALLOWLIST_APROVADA = {"nome", "sexo", "porte", "idade_estimada", "raca", "pelagem", "foto_url",
-                      "is_castrado", "is_idoso"}
+                      "is_castrado", "is_idoso", "slug_publico", "descricao_publica", "pausar_candidaturas"}
 
 
 def test_allowlist_publica_e_exatamente_a_aprovada():
