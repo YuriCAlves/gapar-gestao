@@ -6,6 +6,7 @@ import type {
   PessoaNaoApta,
   RegistroAuditoria,
 } from "../types";
+import type { BuscaListaSigilosa } from "../types/contratos";
 import { requisitar } from "./http";
 
 // Todas estas rotas são exclusivas da Administradora (RF03, RF04, RF22, RF24).
@@ -33,6 +34,7 @@ export async function definirAcesso(id: number, ativo: boolean): Promise<PessoaA
 }
 
 export interface FiltrosNaoAptos {
+  q?: string;
   cpf?: string;
   telefone?: string;
 }
@@ -41,19 +43,34 @@ function ehAbortSignal(valor: FiltrosNaoAptos | AbortSignal | undefined): valor 
   return typeof AbortSignal !== "undefined" && valor instanceof AbortSignal;
 }
 
+function montarBuscaSigilosa(filtros?: FiltrosNaoAptos): BuscaListaSigilosa | null {
+  const cpf = filtros?.cpf?.trim();
+  if (cpf) return { cpf };
+  const telefone = filtros?.telefone?.trim();
+  if (telefone) return { telefone };
+  const q = filtros?.q?.trim();
+  if (q) return { q };
+  return null;
+}
+
 export async function listarNaoAptos(
   filtrosOrSinal?: FiltrosNaoAptos | AbortSignal,
   sinalOpcional?: AbortSignal,
 ): Promise<PessoaNaoApta[]> {
   const filtros = ehAbortSignal(filtrosOrSinal) ? undefined : filtrosOrSinal;
   const sinal = ehAbortSignal(filtrosOrSinal) ? filtrosOrSinal : sinalOpcional;
-  const consulta: Record<string, string> = {};
-  if (filtros?.cpf) consulta.cpf = filtros.cpf;
-  if (filtros?.telefone) consulta.telefone = filtros.telefone;
-  const resposta = await requisitar<{ nao_aptos: PessoaNaoApta[] }>("/api/admin/nao-aptos", {
-    sinal,
-    consulta: Object.keys(consulta).length > 0 ? consulta : undefined,
-  });
+  const corpo = montarBuscaSigilosa(filtros);
+
+  if (corpo) {
+    const resposta = await requisitar<{ nao_aptos: PessoaNaoApta[] }>("/api/admin/nao-aptos/busca", {
+      metodo: "POST",
+      json: corpo,
+      sinal,
+    });
+    return resposta.nao_aptos;
+  }
+
+  const resposta = await requisitar<{ nao_aptos: PessoaNaoApta[] }>("/api/admin/nao-aptos", { sinal });
   return resposta.nao_aptos;
 }
 

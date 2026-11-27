@@ -8,6 +8,7 @@ import {
   mensagemErroCpf,
   mensagemErroTelefone,
   normalizarDigitosTelefone,
+  normalizarEntradaTelefone,
   posicaoCursorNaMascara,
   soDigitos,
   telefoneValido,
@@ -95,12 +96,21 @@ describe("mascararTelefone", () => {
     }
   });
 
-  it("aceita colar formatado, descarta DDI +55 do WhatsApp, ignora letras e limita a 11 dígitos", () => {
+  it("aceita colar formatado, descarta DDI 55 só em colagem/+55 e preserva DDD 55 na digitação", () => {
     expect(mascararTelefone("(41) 98765-4321")).toBe("(41) 98765-4321");
-    expect(normalizarDigitosTelefone("+55 (41) 99999-8888")).toBe("41999998888");
+    expect(normalizarDigitosTelefone("+55 (41) 99999-8888", true)).toBe("41999998888");
+    expect(normalizarDigitosTelefone("5541999998888", true)).toBe("41999998888");
     expect(mascararTelefone("+55 (41) 99999-8888")).toBe("(41) 99999-8888");
-    expect(normalizarDigitosTelefone("+55 (41) 3222-3344")).toBe("4132223344");
+    expect(normalizarDigitosTelefone("+55 (41) 3222-3344", true)).toBe("4132223344");
     expect(mascararTelefone("+55 (41) 3222-3344")).toBe("(41) 3222-3344");
+    // Digitar no meio de um número com DDD 55 (sem colagem e sem "+55") NUNCA pode apagar o DDD 55
+    expect(normalizarDigitosTelefone("551999998888", false)).toBe("55199999888");
+    expect(normalizarEntradaTelefone("(55) 919999-8888", "55999998888", false)).toBe("55999998888");
+    expect(normalizarEntradaTelefone("(55) 99999-88881", "55999998888", false)).toBe("55999998888");
+    // Colagem ou entrada de 2+ dígitos de uma vez com DDI 55 descarta o código do país
+    expect(normalizarEntradaTelefone("+55 (41) 99999-8888", "", true)).toBe("41999998888");
+    expect(normalizarEntradaTelefone("5541999998888", "", false)).toBe("41999998888");
+    expect(mascararTelefone("(55) 99999-8888")).toBe("(55) 99999-8888");
     expect(mascararTelefone("tel: 41abc98765def4321")).toBe("(41) 98765-4321");
     expect(mascararTelefone("419876543219999")).toBe("(41) 98765-4321");
   });

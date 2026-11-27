@@ -1,6 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import type {
   ChangeEvent,
+  ClipboardEvent,
   FocusEvent,
   InputEvent as ReactInputEvent,
   InputHTMLAttributes,
@@ -15,7 +16,7 @@ import {
   mascararTelefone,
   mensagemErroCpf,
   mensagemErroTelefone,
-  normalizarDigitosTelefone,
+  normalizarEntradaTelefone,
   posicaoCursorNaMascara,
   soDigitos,
 } from "../utils/mascaras";
@@ -114,7 +115,7 @@ interface ConfigCampoMascarado {
   type: "text" | "tel";
   inputMode: "numeric" | "tel";
   placeholderPadrao: string;
-  normalizarDigitos: (bruto: string, anterior: string) => string;
+  normalizarDigitos: (bruto: string, anterior: string, colado: boolean) => string;
   mascarar: (valor: string) => string;
   validarNoBlur: (digitos: string, obrigatorio?: boolean) => string | null;
 }
@@ -126,6 +127,7 @@ function CampoMascarado({
   obrigatorio,
   placeholder,
   onBlur,
+  onPaste,
   onBeforeInput,
   onKeyDown,
   config,
@@ -133,6 +135,7 @@ function CampoMascarado({
 }: PropsCampoMascarado & { config: ConfigCampoMascarado }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const cursorAlvo = useRef<number | null>(null);
+  const colandoRef = useRef(false);
   const [erroBlur, setErroBlur] = useState<string | null>(null);
 
   const digitosAtuais = soDigitos(valor).slice(0, 11);
@@ -151,6 +154,11 @@ function CampoMascarado({
     cursorAlvo.current = posicaoCursorNaMascara(novoExibido, Math.min(digitosAntes, limitado.length));
     setErroBlur(null);
     onValor(limitado);
+  }
+
+  function aoColar(evento: ClipboardEvent<HTMLInputElement>) {
+    colandoRef.current = true;
+    onPaste?.(evento);
   }
 
   function aoAntesDeDigitar(evento: ReactInputEvent<HTMLInputElement>) {
@@ -191,11 +199,19 @@ function CampoMascarado({
   }
 
   function aoMudar(evento: ChangeEvent<HTMLInputElement>) {
+    const veioDeColagem = colandoRef.current;
+    colandoRef.current = false;
+
     const bruto = evento.target.value;
     const selecao = evento.target.selectionStart ?? bruto.length;
     const todosDigitos = soDigitos(bruto);
-    const normalizados = config.normalizarDigitos(bruto, digitosAtuais);
-    const ddiRemovido = todosDigitos.length - normalizados.length === 2 && todosDigitos.startsWith("55") && normalizados === todosDigitos.slice(2);
+    const normalizados = config.normalizarDigitos(bruto, digitosAtuais, veioDeColagem);
+    const insercaoEmBloco = veioDeColagem || todosDigitos.length - digitosAtuais.length >= 2;
+    const ddiRemovido =
+      insercaoEmBloco &&
+      todosDigitos.length - normalizados.length === 2 &&
+      todosDigitos.startsWith("55") &&
+      normalizados === todosDigitos.slice(2);
     const digitosAntesBruto = soDigitos(bruto.slice(0, selecao)).length;
     const digitosAntes = ddiRemovido ? Math.max(0, digitosAntesBruto - 2) : digitosAntesBruto;
     atualizarComCursor(normalizados, digitosAntes);
@@ -220,6 +236,7 @@ function CampoMascarado({
       obrigatorio={obrigatorio}
       value={exibido}
       erro={erroExibido}
+      onPaste={aoColar}
       onBeforeInput={aoAntesDeDigitar}
       onKeyDown={aoTeclar}
       onChange={aoMudar}
@@ -232,7 +249,13 @@ const CONFIG_CPF: ConfigCampoMascarado = {
   type: "text",
   inputMode: "numeric",
   placeholderPadrao: "000.000.000-00",
-  normalizarDigitos: (bruto) => soDigitos(bruto).slice(0, 11),
+  normalizarDigitos: (bruto, anterior, colado) => {
+    const todos = soDigitos(bruto);
+    if (!colado && anterior.length === 11 && todos.length > 11) {
+      return anterior;
+    }
+    return todos.slice(0, 11);
+  },
   mascarar: mascararCpf,
   validarNoBlur: mensagemErroCpf,
 };
@@ -241,14 +264,7 @@ const CONFIG_TELEFONE: ConfigCampoMascarado = {
   type: "tel",
   inputMode: "tel",
   placeholderPadrao: "(00) 00000-0000",
-  normalizarDigitos: (bruto, anterior) => {
-    const todos = soDigitos(bruto);
-    // Evita remover o DDD 55 quando a pessoa já digitou 11 dígitos e apertou só 1 tecla extra.
-    if (anterior.length === 11 && todos.length === 12 && todos.startsWith(anterior)) {
-      return anterior;
-    }
-    return normalizarDigitosTelefone(bruto);
-  },
+  normalizarDigitos: (bruto, anterior, colado) => normalizarEntradaTelefone(bruto, anterior, colado),
   mascarar: mascararTelefone,
   validarNoBlur: mensagemErroTelefone,
 };

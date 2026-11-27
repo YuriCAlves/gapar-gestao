@@ -1,11 +1,14 @@
+import { lazy, Suspense, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { buscarFicha } from "../api/animais";
 import { Abas, PainelDaAba } from "../components/Abas";
 import type { DefinicaoDeAba } from "../components/Abas";
+import { Botao } from "../components/Botao";
 import { Aviso, Esqueleto, EstadoErro } from "../components/Estados";
 import { FotoAnimal } from "../components/FotoAnimal";
-import { IconeVoltar } from "../components/Icones";
+import { IconeQrCode, IconeVoltar } from "../components/Icones";
 import { IndicadoresDoAnimal, SeloDeStatus } from "../components/Selos";
+import { RequerFlag } from "../contexts/FlagsContext";
 import { useCarregar } from "../hooks/useCarregar";
 import { formatarData } from "../utils/datas";
 import { AbaAdocao } from "./ficha/AbaAdocao";
@@ -13,6 +16,8 @@ import { AbaDados } from "./ficha/AbaDados";
 import { AbaMedicacoes } from "./ficha/AbaMedicacoes";
 import { AbaProntuario } from "./ficha/AbaProntuario";
 import { AbaSaude } from "./ficha/AbaSaude";
+
+const DialogoEtiquetaBaia = lazy(() => import("../components/DialogoEtiquetaBaia"));
 
 type IdDaAba = "dados" | "saude" | "prontuario" | "medicacoes" | "adocao";
 const ABAS_VALIDAS: IdDaAba[] = ["dados", "saude", "prontuario", "medicacoes", "adocao"];
@@ -23,6 +28,7 @@ export default function AnimalFichaPage() {
   const [parametros, setParametros] = useSearchParams();
   const pedida = parametros.get("aba") as IdDaAba | null;
   const aba: IdDaAba = pedida && ABAS_VALIDAS.includes(pedida) ? pedida : "dados";
+  const [etiquetaAberta, setEtiquetaAberta] = useState(false);
 
   const ficha = useCarregar((sinal) => buscarFicha(animalId, sinal), [animalId]);
 
@@ -83,8 +89,30 @@ export default function AnimalFichaPage() {
           </span>
           <IndicadoresDoAnimal animal={animal} />
           <p className="text-tinta-700">No GAPAR desde {formatarData(animal.data_entrada)}</p>
+          <RequerFlag flag="microchip">
+            <div className="pt-1">
+              <Botao
+                variante="secundario"
+                tamanho="compacto"
+                icone={<IconeQrCode tamanho={18} />}
+                onClick={() => setEtiquetaAberta(true)}
+              >
+                Placa da baia (QR)
+              </Botao>
+            </div>
+          </RequerFlag>
         </div>
       </header>
+
+      {etiquetaAberta && (
+        <Suspense fallback={null}>
+          <DialogoEtiquetaBaia
+            animal={animal}
+            aberto={etiquetaAberta}
+            aoFechar={() => setEtiquetaAberta(false)}
+          />
+        </Suspense>
+      )}
 
       {congelado && (
         <Aviso tipo="preservado" titulo="Histórico preservado" className="mt-4">

@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useFlags } from "../contexts/FlagsContext";
 import type { FlagPublica } from "../types/contratos";
 import { Confirmacao, Dialogo } from "./Dialogo";
+import { Carregando } from "./Estados";
 import {
   IconeAdmin,
   IconeCoracao,
@@ -144,7 +145,15 @@ export function Layout() {
       </header>
 
       <main id="conteudo" tabIndex={-1} className="pb-barra mx-auto max-w-6xl px-4 pt-4 outline-none md:pb-10">
-        <Outlet />
+        <Suspense
+          fallback={
+            <div className="grid min-h-64 place-items-center px-4">
+              <Carregando />
+            </div>
+          }
+        >
+          <Outlet />
+        </Suspense>
       </main>
 
       {/* Barra inferior no celular: 4 abas mantidas + gaveta "Mais", ao alcance do polegar em 360px */}
@@ -202,11 +211,17 @@ export function Layout() {
       <Dialogo aberto={gavetaAberta} aoFechar={() => setGavetaAberta(false)} titulo="Mais opções">
         <div className="space-y-2">
           {extrasAtivos.map((item) => (
-            <Link
+            <NavLink
               key={item.para}
               to={item.para}
               onClick={() => setGavetaAberta(false)}
-              className="flex min-h-14 items-center gap-3 rounded-xl border border-creme-200 bg-white px-4 py-2.5 text-left transition-colors hover:bg-mata-50"
+              className={({ isActive }) =>
+                `flex min-h-14 items-center gap-3 rounded-xl border px-4 py-2.5 text-left transition-colors ${
+                  isActive
+                    ? "border-mata-700 bg-mata-50"
+                    : "border-creme-200 bg-white hover:bg-mata-50"
+                }`
+              }
             >
               <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-mata-50 text-mata-700" aria-hidden="true">
                 {item.icone}
@@ -215,14 +230,20 @@ export function Layout() {
                 <span className="block font-extrabold text-tinta-900">{item.rotulo}</span>
                 <span className="block text-sm text-tinta-700">{item.descricao}</span>
               </span>
-            </Link>
+            </NavLink>
           ))}
 
           {ehAdministradora && (
-            <Link
+            <NavLink
               to="/admin"
               onClick={() => setGavetaAberta(false)}
-              className="flex min-h-14 items-center gap-3 rounded-xl border border-creme-200 bg-white px-4 py-2.5 text-left transition-colors hover:bg-mata-50"
+              className={({ isActive }) =>
+                `flex min-h-14 items-center gap-3 rounded-xl border px-4 py-2.5 text-left transition-colors ${
+                  isActive
+                    ? "border-mata-700 bg-mata-50"
+                    : "border-creme-200 bg-white hover:bg-mata-50"
+                }`
+              }
             >
               <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-barro-50 text-barro-700" aria-hidden="true">
                 <IconeAdmin />
@@ -231,13 +252,19 @@ export function Layout() {
                 <span className="block font-extrabold text-tinta-900">Gestão</span>
                 <span className="block text-sm text-tinta-700">Pessoas autorizadas, lista sigilosa e histórico</span>
               </span>
-            </Link>
+            </NavLink>
           )}
 
-          <Link
+          <NavLink
             to="/privacidade"
             onClick={() => setGavetaAberta(false)}
-            className="flex min-h-14 items-center gap-3 rounded-xl border border-creme-200 bg-white px-4 py-2.5 text-left transition-colors hover:bg-mata-50"
+            className={({ isActive }) =>
+              `flex min-h-14 items-center gap-3 rounded-xl border px-4 py-2.5 text-left transition-colors ${
+                isActive
+                  ? "border-mata-700 bg-mata-50"
+                  : "border-creme-200 bg-white hover:bg-mata-50"
+              }`
+            }
           >
             <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-creme-100 text-tinta-700" aria-hidden="true">
               <IconeInfo />
@@ -246,7 +273,7 @@ export function Layout() {
               <span className="block font-extrabold text-tinta-900">Política de Privacidade</span>
               <span className="block text-sm text-tinta-700">Como a ONG GAPAR protege dados pessoais</span>
             </span>
-          </Link>
+          </NavLink>
 
           <button
             type="button"

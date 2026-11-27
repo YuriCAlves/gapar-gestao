@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, useEffect } from "react";
 import type { ReactNode } from "react";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -19,6 +19,8 @@ const AnimalFichaPage = lazy(() => import("./pages/AnimalFichaPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 const PrivacidadePage = lazy(() => import("./pages/publico/PrivacidadePage"));
 const EmBrevePublicoPage = lazy(() => import("./pages/publico/EmBrevePublicoPage"));
+const VitrinePage = lazy(() => import("./pages/publico/VitrinePage"));
+const VitrineAnimalPage = lazy(() => import("./pages/publico/VitrineAnimalPage"));
 
 function TelaCheia({ children }: { children: ReactNode }) {
   return <div className="grid min-h-dvh place-items-center px-4">{children}</div>;
@@ -100,79 +102,77 @@ export default function App() {
     <BrowserRouter>
       <FlagsProvider>
         <AvisosProvider>
-          <Suspense
-            fallback={
-              <TelaCheia>
-                <Carregando />
-              </TelaCheia>
-            }
-          >
-            <Routes>
-              {/* Rotas públicas: fora do AuthContext, sem chamada a /auth/* */}
-              <Route element={<LayoutPublico />}>
-                <Route path="/privacidade" element={<PrivacidadePage />} />
-                <Route
-                  path="/adote"
-                  element={
-                    <RotaComFlag flag="vitrine" publica>
-                      <EmBrevePublicoPage titulo="Vitrine de adoção" />
-                    </RotaComFlag>
-                  }
-                />
-                <Route
-                  path="/adote/:slug"
-                  element={
-                    <RotaComFlag flag="vitrine" publica>
-                      <EmBrevePublicoPage titulo="Vitrine de adoção" />
-                    </RotaComFlag>
-                  }
-                />
-                <Route
-                  path="/termo/:token"
-                  element={
-                    <RotaComFlag flag="termo_digital" publica>
-                      <EmBrevePublicoPage titulo="Termo de adoção digital" />
-                    </RotaComFlag>
-                  }
-                />
-                <Route
-                  path="/carteira/:token"
-                  element={
-                    <RotaComFlag flag="carteira" publica>
-                      <EmBrevePublicoPage titulo="Carteira de vacinas" />
-                    </RotaComFlag>
-                  }
-                />
-              </Route>
+          <Routes>
+            {/* Rotas públicas: fora do AuthContext, sem chamada a /auth/* */}
+            <Route element={<LayoutPublico />}>
+              <Route path="/privacidade" element={<PrivacidadePage />} />
+              <Route path="/privacidade/*" element={<NaoEncontradaPage publica />} />
+              <Route
+                path="/adote"
+                element={
+                  <RotaComFlag flag="vitrine" publica>
+                    <VitrinePage />
+                  </RotaComFlag>
+                }
+              />
+              <Route
+                path="/adote/:slug"
+                element={
+                  <RotaComFlag flag="vitrine" publica>
+                    <VitrineAnimalPage />
+                  </RotaComFlag>
+                }
+              />
+              <Route path="/adote/*" element={<NaoEncontradaPage publica />} />
+              <Route path="/termo" element={<NaoEncontradaPage publica />} />
+              <Route
+                path="/termo/:token"
+                element={
+                  <RotaComFlag flag="termo_digital" publica>
+                    <EmBrevePublicoPage titulo="Termo de adoção digital" />
+                  </RotaComFlag>
+                }
+              />
+              <Route path="/termo/*" element={<NaoEncontradaPage publica />} />
+              <Route path="/carteira" element={<NaoEncontradaPage publica />} />
+              <Route
+                path="/carteira/:token"
+                element={
+                  <RotaComFlag flag="carteira" publica>
+                    <EmBrevePublicoPage titulo="Carteira de vacinas" />
+                  </RotaComFlag>
+                }
+              />
+              <Route path="/carteira/*" element={<NaoEncontradaPage publica />} />
+            </Route>
 
-              {/* Rotas internas: com sessão Google + Whitelist */}
-              <Route element={<AreaInterna />}>
-                <Route path="/entrar" element={<LoginPage />} />
+            {/* Rotas internas: com sessão Google + Whitelist */}
+            <Route element={<AreaInterna />}>
+              <Route path="/entrar" element={<LoginPage />} />
+              <Route
+                element={
+                  <RotaProtegida>
+                    <Layout />
+                  </RotaProtegida>
+                }
+              >
+                <Route path="/" element={<Inicio />} />
+                <Route path="/hoje" element={<HojePage />} />
+                <Route path="/animais" element={<AnimaisPage />} />
+                <Route path="/animais/novo" element={<AnimalNovoPage />} />
+                <Route path="/animais/:id" element={<AnimalFichaPage />} />
                 <Route
+                  path="/admin"
                   element={
-                    <RotaProtegida>
-                      <Layout />
+                    <RotaProtegida somenteAdministradora>
+                      <AdminPage />
                     </RotaProtegida>
                   }
-                >
-                  <Route path="/" element={<Inicio />} />
-                  <Route path="/hoje" element={<HojePage />} />
-                  <Route path="/animais" element={<AnimaisPage />} />
-                  <Route path="/animais/novo" element={<AnimalNovoPage />} />
-                  <Route path="/animais/:id" element={<AnimalFichaPage />} />
-                  <Route
-                    path="/admin"
-                    element={
-                      <RotaProtegida somenteAdministradora>
-                        <AdminPage />
-                      </RotaProtegida>
-                    }
-                  />
-                  <Route path="*" element={<NaoEncontradaPage />} />
-                </Route>
+                />
+                <Route path="*" element={<NaoEncontradaPage />} />
               </Route>
-            </Routes>
-          </Suspense>
+            </Route>
+          </Routes>
         </AvisosProvider>
       </FlagsProvider>
     </BrowserRouter>

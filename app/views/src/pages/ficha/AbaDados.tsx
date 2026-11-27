@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
-import { alterarStatus, atualizarAnimal, enviarFoto, excluirAnimal } from "../../api/animais";
+import { Link, useNavigate } from "react-router-dom";
+import { alterarStatus, atualizarAnimal, atualizarVitrine, enviarFoto, excluirAnimal } from "../../api/animais";
 import { textoDoErro } from "../../api/http";
-import { Botao } from "../../components/Botao";
-import { CampoSelecao } from "../../components/Campos";
+import { Botao, classesDoBotao } from "../../components/Botao";
+import { CampoArea, CampoSelecao, Interruptor } from "../../components/Campos";
 import { Confirmacao, Dialogo } from "../../components/Dialogo";
 import { Aviso } from "../../components/Estados";
 import { CamposDoAnimal, dadosDoAnimal, validarAnimal, valoresDoAnimal } from "../../components/FormularioAnimal";
@@ -13,6 +13,7 @@ import { IconeCamera, IconeLapis, IconeLixeira } from "../../components/Icones";
 import { SeletorDeFoto } from "../../components/SeletorDeFoto";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAvisos } from "../../contexts/AvisosContext";
+import { RequerFlag } from "../../contexts/FlagsContext";
 import type { StatusAnimal } from "../../types";
 import { formatarData } from "../../utils/datas";
 import { enderecoDaFoto } from "../../utils/foto";
@@ -53,6 +54,20 @@ export function AbaDados({ ficha, congelado, aoAtualizar }: PropsDaAba) {
 
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
+
+  const disponivel = animal.status_operacional === "disponível";
+  const [publicar, setPublicar] = useState(animal.is_publicado ?? false);
+  const [descricaoPublica, setDescricaoPublica] = useState(animal.descricao_publica ?? "");
+  const [pausarCandidaturas, setPausarCandidaturas] = useState(animal.pausar_candidaturas ?? false);
+  const [salvandoVitrine, setSalvandoVitrine] = useState(false);
+  const [erroVitrine, setErroVitrine] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPublicar(animal.is_publicado ?? false);
+    setDescricaoPublica(animal.descricao_publica ?? "");
+    setPausarCandidaturas(animal.pausar_candidaturas ?? false);
+    setErroVitrine(null);
+  }, [animal.id, animal.is_publicado, animal.descricao_publica, animal.pausar_candidaturas]);
 
   function abrirEdicao() {
     setValores(valoresDoAnimal(animal));
@@ -111,6 +126,29 @@ export function AbaDados({ ficha, congelado, aoAtualizar }: PropsDaAba) {
       avisarErro(textoDoErro(causa));
     } finally {
       setMudandoStatus(false);
+    }
+  }
+
+  async function salvarVitrine(evento: FormEvent) {
+    evento.preventDefault();
+    setSalvandoVitrine(true);
+    setErroVitrine(null);
+    try {
+      const atualizado = await atualizarVitrine(animal.id, {
+        publicar: disponivel ? publicar : false,
+        descricao_publica: descricaoPublica.trim() || null,
+        pausar_candidaturas: pausarCandidaturas,
+      });
+      avisarSucesso(
+        atualizado.is_publicado
+          ? `${animal.nome} está publicado na vitrine de adoção.`
+          : "Configurações da vitrine atualizadas.",
+      );
+      aoAtualizar();
+    } catch (causa) {
+      setErroVitrine(textoDoErro(causa));
+    } finally {
+      setSalvandoVitrine(false);
     }
   }
 
@@ -173,6 +211,68 @@ export function AbaDados({ ficha, congelado, aoAtualizar }: PropsDaAba) {
             </Botao>
           </div>
         </section>
+      )}
+
+      {ehAdministradora && !congelado && (
+        <RequerFlag flag="vitrine">
+          <section className="rounded-cartao bg-white p-4 shadow-cartao" aria-labelledby="titulo-vitrine">
+            <h2 id="titulo-vitrine" className="text-lg">
+              Vitrine de adoção
+            </h2>
+            <form onSubmit={salvarVitrine} noValidate className="mt-2 space-y-4">
+              <Interruptor
+                rotulo="Publicar na vitrine"
+                dica={
+                  disponivel
+                    ? "Mostra este animal na página pública de adoção."
+                    : 'Só animais na situação "Disponível para adoção" podem ir para a vitrine.'
+                }
+                marcado={publicar}
+                aoMudar={setPublicar}
+                desabilitado={!disponivel || salvandoVitrine}
+              />
+              <div>
+                <CampoArea
+                  rotulo="Descrição para o público"
+                  dica="Conte o jeito dele, convivência com pessoas e outros animais."
+                  rows={4}
+                  maxLength={600}
+                  value={descricaoPublica}
+                  onChange={(e) => setDescricaoPublica(e.target.value.slice(0, 600))}
+                  disabled={salvandoVitrine}
+                />
+                <p className="mt-1 text-right text-sm font-semibold text-tinta-700" aria-live="polite">
+                  {descricaoPublica.length}/600 caracteres
+                </p>
+              </div>
+              <Interruptor
+                rotulo="Pausar candidaturas"
+                dica="Mantém o cão na vitrine, mas deixa apenas o contato pelo WhatsApp."
+                marcado={pausarCandidaturas}
+                aoMudar={setPausarCandidaturas}
+                desabilitado={!publicar || salvandoVitrine}
+              />
+              {erroVitrine && (
+                <Aviso tipo="perigo" anunciar>
+                  {erroVitrine}
+                </Aviso>
+              )}
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <Botao type="submit" ocupado={salvandoVitrine}>
+                  Salvar vitrine
+                </Botao>
+                {animal.is_publicado && animal.slug_publico && (
+                  <Link
+                    to={`/adote/${animal.slug_publico}`}
+                    className={classesDoBotao("fantasma", "compacto", "underline decoration-2 underline-offset-4")}
+                  >
+                    Ver página na vitrine
+                  </Link>
+                )}
+              </div>
+            </form>
+          </section>
+        </RequerFlag>
       )}
 
       <section className="rounded-cartao bg-white px-4 py-2 shadow-cartao" aria-label="Cadastro">

@@ -43,23 +43,42 @@ export function cpfValido(valor: string): boolean {
 
 /**
  * Extrai os dígitos de um telefone brasileiro (máx. 11).
- * Quando vier colado com DDI 55 (12 ou 13 dígitos começando por "55"), descarta o DDI.
+ * O DDI "55" (12 ou 13 dígitos) só é descartado em colagem (ou quando traz prefixo explícito "+55"),
+ * nunca durante digitação normal — evitando apagar o DDD 55 ao editar no meio do número.
  */
-export function normalizarDigitosTelefone(valor: string): string {
+export function normalizarDigitosTelefone(valor: string, colado = false): string {
   const digitos = soDigitos(valor);
-  if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith("55")) {
+  const temPrefixoMais55 = valor.trim().startsWith("+55");
+  if ((colado || temPrefixoMais55) && (digitos.length === 12 || digitos.length === 13) && digitos.startsWith("55")) {
     return digitos.slice(2);
   }
   return digitos.slice(0, LIMITE_DIGITOS);
 }
 
 /**
+ * Normaliza a entrada de telefone durante edição no input.
+ * Descarta o DDI "55" apenas em colagem ou quando 2+ dígitos entram de uma só vez.
+ * Na digitação dígito a dígito, preserva o DDD 55 e bloqueia excesso acima de 11 dígitos.
+ */
+export function normalizarEntradaTelefone(bruto: string, anterior: string, colado = false): string {
+  const todos = soDigitos(bruto);
+  const insercaoEmBloco = colado || todos.length - anterior.length >= 2;
+  if (!insercaoEmBloco) {
+    if (anterior.length === LIMITE_DIGITOS && todos.length > LIMITE_DIGITOS) {
+      return anterior;
+    }
+    return todos.slice(0, LIMITE_DIGITOS);
+  }
+  return normalizarDigitosTelefone(bruto, true);
+}
+
+/**
  * Formata progressivamente um telefone brasileiro (máx. 11 dígitos):
  * 10 dígitos: (00) 0000-0000 | 11 dígitos: (00) 00000-0000
- * Colagens com DDI +55 (12–13 dígitos) têm o DDI descartado automaticamente.
+ * Colagens com prefixo +55 têm o DDI descartado; digitação normal preserva o DDD 55.
  */
 export function mascararTelefone(valor: string): string {
-  const digitos = normalizarDigitosTelefone(valor);
+  const digitos = normalizarDigitosTelefone(valor, false);
   if (digitos.length === 0) return "";
   if (digitos.length <= 2) return `(${digitos}`;
   if (digitos.length <= 6) return `(${digitos.slice(0, 2)}) ${digitos.slice(2)}`;

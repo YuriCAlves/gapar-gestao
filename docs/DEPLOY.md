@@ -55,6 +55,32 @@ As migrações rodam fora da Vercel, a partir da máquina local apontando para o
 flask --app wsgi db upgrade
 ```
 
+### Backfill de criptografia PII (CP-01 — conferência obrigatória da impressão digital)
+
+Antes de cifrar os dados existentes em produção e remover as colunas em claro (`0003b`), siga esta ordem exata:
+
+1. **Verifique a impressão digital das chaves em produção (Vercel):**
+   - Suba o deploy com `PII_FERNET_KEYS` e `PII_HMAC_KEY` configuradas na Vercel e abra os logs da função Python.
+   - Anote a linha gravada na inicialização:
+     ```text
+     Chaves PII em uso: fernet=<impressão-fernet> hmac=<impressão-hmac>
+     ```
+2. **Rode o dry-run na máquina local e compare as impressões digitais:**
+   ```bash
+   flask --app wsgi pii-backfill --dry-run
+   ```
+   - O comando imprime `Chaves PII: fernet=<...> hmac=<...>`.
+   - **SE OS VALORES DE `fernet=` OU `hmac=` FOREM DIFERENTES DOS LOGS DA VERCEL, PARE IMEDIATAMENTE.** Não rode o backfill nem a migração `0003b` — cifrar com outra chave tornaria os dados ilegíveis na produção. Confira as variáveis locais e repita o `--dry-run` até as duas linhas coincidirem exatamente.
+3. **Execute o backfill real e valide as contagens:**
+   ```bash
+   flask --app wsgi pii-backfill
+   ```
+   - Confirme na saída que todos os registros foram cifrados e que não restou nenhum registro pendente.
+4. **Faça um backup no Supabase** antes de aplicar a migração `0003b` (que remove as colunas antigas em texto claro):
+   ```bash
+   flask --app wsgi db upgrade
+   ```
+
 ## 4. Homologação
 
 ```bash

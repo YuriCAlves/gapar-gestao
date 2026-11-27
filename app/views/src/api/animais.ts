@@ -1,5 +1,6 @@
 import type {
   Animal,
+  AtualizacaoVitrine,
   DadosAnimal,
   FichaAnimal,
   FiltrosAnimais,
@@ -64,6 +65,14 @@ export async function alterarStatus(id: number, status: StatusAnimal): Promise<A
   const resposta = await requisitar<RespostaAnimal>(`/api/animais/${id}/status`, {
     metodo: "PATCH",
     json: { status_operacional: status },
+  });
+  return resposta.animal;
+}
+
+export async function atualizarVitrine(id: number, dados: AtualizacaoVitrine): Promise<Animal> {
+  const resposta = await requisitar<RespostaAnimal>(`/api/animais/${id}/vitrine`, {
+    metodo: "PATCH",
+    json: dados,
   });
   return resposta.animal;
 }

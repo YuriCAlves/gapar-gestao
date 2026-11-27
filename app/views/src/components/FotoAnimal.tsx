@@ -50,9 +50,11 @@ interface PropsDaFoto {
   className?: string;
   /** "eager" para a foto principal da ficha; nas listas as fotos carregam sob demanda. */
   carregamento?: "lazy" | "eager";
+  largura?: number;
+  altura?: number;
 }
 
-export function FotoAnimal({ nome, fotoUrl, className = "", carregamento = "lazy" }: PropsDaFoto) {
+export function FotoAnimal({ nome, fotoUrl, className = "", carregamento = "lazy", largura, altura }: PropsDaFoto) {
   const endereco = enderecoDaFoto(fotoUrl);
   const [falhou, setFalhou] = useState(false);
 
@@ -64,6 +66,8 @@ export function FotoAnimal({ nome, fotoUrl, className = "", carregamento = "lazy
         <img
           src={endereco}
           alt={`Foto de ${nome}`}
+          width={largura}
+          height={altura}
           loading={carregamento}
           decoding="async"
           onError={() => setFalhou(true)}

@@ -267,3 +267,24 @@ export function IconeMenu(props: PropsDoIcone) {
     </Base>
   );
 }
+
+export function IconeQrCode(props: PropsDoIcone) {
+  return (
+    <Base {...props}>
+      <rect x="4" y="4" width="6" height="6" rx="1" />
+      <rect x="14" y="4" width="6" height="6" rx="1" />
+      <rect x="4" y="14" width="6" height="6" rx="1" />
+      <path d="M14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z" />
+    </Base>
+  );
+}
+
+export function IconeImprimir(props: PropsDoIcone) {
+  return (
+    <Base {...props}>
+      <path d="M7 8V4h10v4" />
+      <rect x="4" y="8" width="16" height="8" rx="2" />
+      <path d="M7 14h10v6H7z" />
+    </Base>
+  );
+}

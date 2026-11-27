@@ -64,6 +64,10 @@ export interface Animal {
   status_operacional: StatusAnimal;
   congelado: boolean;
   created_at: string | null;
+  is_publicado?: boolean;
+  slug_publico?: string | null;
+  descricao_publica?: string | null;
+  pausar_candidaturas?: boolean;
 }
 
 export interface FiltrosAnimais {
@@ -107,6 +111,12 @@ export interface RespostaAnimal {
   sucesso: boolean;
   mensagem?: string;
   animal: Animal;
+}
+
+export interface AtualizacaoVitrine {
+  publicar: boolean;
+  descricao_publica?: string | null;
+  pausar_candidaturas?: boolean;
 }
 
 // ---------------------------------------------------------------------------
