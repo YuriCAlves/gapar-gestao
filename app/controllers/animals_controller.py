@@ -4,10 +4,12 @@ from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.health import Vaccination, Prescription, MedicalRecord
+from app.models.isolation import carregar_isolamentos_abertos
 from app.utils import tempo
 from app.services.images import compress_and_save_photo
 from app.services.audit import log_audit_event
 from app.utils.decorators import admin_required
+from app.utils.publico import flag_ativa, require_feature
 from app.utils.slug import gerar_slug_publico
 from app.services.saude import prescription_dict, vaccine_dicts
 from app.utils.validation import (
@@ -26,6 +28,55 @@ CAMPOS_BOOLEANOS = ["is_castrado", "is_microchipado", "is_idoso"]
 
 _SIM = ("true", "1", "sim")
 _NAO = ("false", "0", "nao", "não")
+
+
+def _numero_microchip(data):
+    """CP-04 (REQ-39, RN21): `numero_microchip` do corpo, já validado.
+
+    Devolve `(presente, numero)`: `presente=False` quando o campo não veio (ou veio vazio com a
+    flag desligada, que é o que o formulário manda sempre). Vazio/null com a flag ligada limpa o
+    número. Número preenchido com a flag "microchip" desligada -> 400 (nunca descartado em
+    silêncio). Formato diferente de 15 dígitos -> 400.
+    """
+    if "numero_microchip" not in data:
+        return False, None
+    valor = data.get("numero_microchip")
+    if valor is not None and not isinstance(valor, str):
+        raise ApiError("Microchip inválido", 400, "O número do microchip deve ter exatamente 15 dígitos.")
+    numero = (valor or "").strip() or None
+    if not flag_ativa("microchip"):
+        if numero is None:
+            return False, None
+        raise ApiError("Microchip desativado", 400,
+                       "O módulo de microchip está desativado; o número não pode ser gravado.")
+    if numero is not None and not Animal.microchip_valido(numero):
+        raise ApiError("Microchip inválido", 400, "O número do microchip deve ter exatamente 15 dígitos.")
+    return True, numero
+
+
+def _conflito_microchip(dono):
+    """409 `ConflitoMicrochip`: aponta a ficha que já usa o número (só para usuária logada)."""
+    return ApiError("Microchip já cadastrado", 409,
+                    f"Este microchip já está cadastrado na ficha de {dono.nome}.",
+                    animal_id=dono.id, animal_nome=dono.nome)
+
+
+def _checar_microchip_livre(numero, animal_id=None):
+    if numero is None:
+        return
+    dono = Animal.buscar_por_microchip(numero, incluir_excluidos=True)
+    if dono is not None and dono.id != animal_id:
+        raise _conflito_microchip(dono)
+
+
+def _commit_com_microchip(numero, animal_id=None):
+    """Commit que traduz a corrida no UNIQUE do microchip em 409 `ConflitoMicrochip`."""
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        _checar_microchip_livre(numero, animal_id)
+        raise
 
 
 def _foto_url_informada(data):
@@ -116,7 +167,8 @@ def list_animals():
             "cuidados_especiais": cuidados_filter,
             "ativos": ativos_filter
         },
-        "animais": [animal.to_dict() for animal in pagination.items]
+        # CP-05 (REQ-43): `isolamento_aberto` da página inteira numa consulta só (sem N+1)
+        "animais": [animal.to_dict() for animal in carregar_isolamentos_abertos(pagination.items)]
     }), 200
 
 
@@ -143,6 +195,8 @@ def create_animal():
     campos.update({campo: clean_text(data, campo) for campo in CAMPOS_TEXTO_LONGO})
     campos.update({campo: parse_bool(data.get(campo)) for campo in CAMPOS_BOOLEANOS})
     raca = model_text(data, Animal, "raca", default=RACA_PADRAO)
+    _, numero_microchip = _numero_microchip(data)
+    _checar_microchip_livre(numero_microchip)
 
     foto_url = _foto_url_informada(data)
     if "foto" in request.files:
@@ -160,9 +214,17 @@ def create_animal():
         status_operacional=Animal.STATUS_ACOLHIMENTO, # RN01
         **campos
     )
+    if numero_microchip:
+        animal.numero_microchip = numero_microchip  # liga `is_microchipado` (RN21)
 
     db.session.add(animal)
-    db.session.flush()
+    try:
+        db.session.flush()
+    except IntegrityError:
+        db.session.rollback()
+        _checar_microchip_livre(numero_microchip)  # corrida no UNIQUE do microchip -> 409
+        raise
+    animal_id = animal.id
     log_audit_event(
         acao="ANIMAL_CADASTRADO",
         entidade="Animal",
@@ -170,13 +232,26 @@ def create_animal():
         detalhes=f"Cadastro do animal {animal.nome} (Status inicial: {animal.status_operacional})",
         commit=False,
     )
-    db.session.commit()
+    _commit_com_microchip(numero_microchip, animal_id)
 
     return jsonify({
         "sucesso": True,
         "mensagem": "Cão cadastrado com sucesso com estado inicial 'em acolhimento' (RN01).",
         "animal": animal.to_dict()
     }), 201
+
+
+@animals_bp.route("/microchip/<string:numero>", methods=["GET"])
+@require_feature("microchip")
+def buscar_por_microchip(numero):
+    """Busca rápida pelo leitor USB HID (CP-04, REQ-40): `{animal: ResumoMicrochip}` ou 404.
+
+    Número fora do formato devolve 404 sem consultar o banco (`Animal.buscar_por_microchip`).
+    """
+    animal = Animal.buscar_por_microchip(numero)
+    if animal is None:
+        raise ApiError("Recurso não encontrado", 404, "Nenhum animal com este microchip.")
+    return jsonify({"animal": animal.to_resumo_microchip()}), 200
 
 
 @animals_bp.route("/<int:animal_id>", methods=["GET"])
@@ -250,6 +325,11 @@ def update_animal(animal_id):
             raise ApiError("Data inválida", 400, "A data de entrada não pode ser uma data futura.")
         novos["data_entrada"] = data_entrada
 
+    microchip_presente, numero_microchip = _numero_microchip(data)
+    if microchip_presente:
+        _checar_microchip_livre(numero_microchip, animal.id)
+        novos["numero_microchip"] = numero_microchip
+
     if "foto" in request.files:
         nova_foto = compress_and_save_photo(request.files["foto"])
         if nova_foto:
@@ -258,6 +338,9 @@ def update_animal(animal_id):
         novos["foto_url"] = _foto_url_informada(data)
 
     alterados = [campo for campo, valor in novos.items() if getattr(animal, campo) != valor]
+    # O número do microchip por último: o validador liga `is_microchipado` (RN21) e não pode ser
+    # desfeito por um `is_microchipado=false` do mesmo corpo.
+    alterados.sort(key=lambda campo: campo == "numero_microchip")
     for campo in alterados:
         setattr(animal, campo, novos[campo])
 
@@ -269,7 +352,7 @@ def update_animal(animal_id):
             detalhes=f"Atualização dos dados cadastrais do animal {animal.nome} (campos: {', '.join(alterados)})",
             commit=False,
         )
-        db.session.commit()
+        _commit_com_microchip(novos.get("numero_microchip"), animal.id)
 
     return jsonify({
         "sucesso": True,

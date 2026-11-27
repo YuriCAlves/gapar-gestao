@@ -4,14 +4,16 @@ from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.health import Vaccination, MedicalRecord, Prescription, MedicationLog
-from app.services import ics
+from app.models.inventory import InventoryItem
+from app.services import ics, inventory_service
 from app.utils import tempo
 from app.services.audit import log_audit_event
 from app.services.saude import (
     find_dose_log, is_prescription_active, logs_by_prescription, open_booster_filter,
     prescription_dict, split_horarios, vaccine_dicts,
 )
-from app.utils.validation import ApiError, clean_text, get_payload, is_horario, model_text, parse_date
+from app.utils.publico import flag_ativa
+from app.utils.validation import ApiError, clean_text, get_payload, is_horario, model_text, parse_date, parse_int
 
 health_bp = Blueprint("health", __name__, url_prefix="/api/saude")
 
@@ -43,6 +45,22 @@ def _user_id():
     return current_user.id if current_user.is_authenticated else None
 
 
+def _pedido_de_baixa(data):
+    """Baixa de estoque opcional junto do registro de saúde (CP-03, REQ-36): (lote_id, quantidade).
+
+    Sem `lote_id` -> None (não há baixa; `quantidade` sozinha é ignorada). Com `lote_id` e a flag
+    "estoque" desligada -> 400, para que a baixa nunca se perca em silêncio.
+    """
+    if data.get("lote_id") in (None, ""):
+        return None
+    if not flag_ativa("estoque"):
+        raise ApiError("Estoque desativado", 400,
+                       "O módulo de estoque está desativado; registre sem informar o lote do estoque.")
+    lote_id = parse_int(data.get("lote_id"), "lote_id", minimo=1)
+    quantidade = inventory_service.parse_quantidade(data.get("quantidade"), padrao="1")
+    return lote_id, quantidade
+
+
 @health_bp.route("/vacinas/<int:animal_id>", methods=["GET", "POST"])
 def vaccines(animal_id):
     """Cartão de vacinação digital (RF13)."""
@@ -64,10 +82,16 @@ def vaccines(animal_id):
         if data_reforco and data_reforco < data_aplicacao:
             raise ApiError("Data inválida", 400, "A data de reforço não pode ser anterior à data de aplicação.")
 
+        baixa = _pedido_de_baixa(data)
+        lote_texto = model_text(data, Vaccination, "lote")
+        if baixa and not lote_texto:
+            # Sem lote digitado, o cartão de vacina registra o código do lote do estoque
+            lote_texto = inventory_service.lote_ou_erro(baixa[0], status_inexistente=400).codigo_lote
+
         vacina = Vaccination(
             animal_id=animal.id,
             nome_vacina=nome_vacina,
-            lote=model_text(data, Vaccination, "lote"),
+            lote=lote_texto,
             data_aplicacao=data_aplicacao,
             data_reforco=data_reforco,
             observacoes=clean_text(data, "observacoes"),
@@ -75,20 +99,31 @@ def vaccines(animal_id):
         )
         db.session.add(vacina)
         db.session.flush()
+        movimento = None
+        if baixa:
+            # Mesma transação: falha na baixa (400/409/422) desfaz também o registro da vacina
+            movimento = inventory_service.baixar_uso(
+                baixa[0], baixa[1], f"Vacina aplicada (registro #{vacina.id})",
+                categoria_exigida=InventoryItem.CATEGORIA_VACINA, user_id=_user_id(),
+                animal_id=animal.id, vaccination_id=vacina.id)
         log_audit_event(
             acao="VACINA_REGISTRADA",
             entidade="Vaccination",
             entidade_id=vacina.id,
-            detalhes=f"Vacina {vacina.nome_vacina} aplicada ao animal {animal.nome}",
+            detalhes=f"Vacina {vacina.nome_vacina} aplicada ao animal {animal.nome}"
+                     + (f" (baixa no lote #{movimento.batch_id})" if movimento else ""),
             commit=False,
         )
         db.session.commit()
 
-        return jsonify({
+        resposta = {
             "sucesso": True,
             "mensagem": "Vacina registrada com sucesso.",
             "vacina": vacina.to_dict()
-        }), 201
+        }
+        if movimento:
+            resposta["movimento"] = movimento.to_dict()
+        return jsonify(resposta), 201
 
     vacinas = animal.vaccinations.order_by(Vaccination.data_aplicacao.desc()).all()
     return jsonify({
@@ -379,13 +414,16 @@ def log_medication_dose(prescription_id):
     if not is_horario(horario_aplicado):
         raise ApiError("Horário inválido", 400, "O campo 'horario_aplicado' deve estar no formato HH:MM.")
 
-    # RF16: impede baixa duplicada do mesmo horário no mesmo dia
+    baixa = _pedido_de_baixa(data)
+
+    # RF16: impede baixa duplicada do mesmo horário no mesmo dia (e, com ela, a baixa de estoque)
     existente = find_dose_log(prescricao.id, hoje, horario_previsto)
     if existente:
         return _resposta_ja_baixado(existente, horario_previsto)
 
     # Guardados antes de gravar: se a gravação falhar, o rollback invalida os objetos da sessão
     prescricao_id, nome_medicamento, nome_animal = prescricao.id, prescricao.nome_medicamento, animal.nome
+    animal_id = animal.id
 
     med_log = MedicationLog(
         prescription_id=prescricao_id,
@@ -398,11 +436,18 @@ def log_medication_dose(prescription_id):
     try:
         db.session.add(med_log)
         db.session.flush()
+        movimento = None
+        if baixa:
+            # Mesma transação: falha na baixa (400/409/422) desfaz também a baixa da dose
+            movimento = inventory_service.baixar_uso(
+                baixa[0], baixa[1], f"Dose de medicação (baixa #{med_log.id})", user_id=_user_id(),
+                animal_id=animal_id, medication_log_id=med_log.id)
         log_audit_event(
             acao="BAIXA_MEDICACAO",
             entidade="MedicationLog",
             entidade_id=med_log.id,
-            detalhes=f"Baixa da dose {horario_previsto} de {nome_medicamento} para o animal {nome_animal}",
+            detalhes=f"Baixa da dose {horario_previsto} de {nome_medicamento} para o animal {nome_animal}"
+                     + (f" (baixa no lote #{movimento.batch_id})" if movimento else ""),
             commit=False,
         )
         db.session.commit()
@@ -416,12 +461,15 @@ def log_medication_dose(prescription_id):
             return _resposta_ja_baixado(existente, horario_previsto)
         raise
 
-    return jsonify({
+    resposta = {
         "sucesso": True,
         "mensagem": "Baixa de medicação realizada com sucesso para o dia de hoje (RF16).",
         "prescricao_id": prescription_id,
         "log": med_log.to_dict()
-    }), 200
+    }
+    if movimento:
+        resposta["movimento"] = movimento.to_dict()
+    return jsonify(resposta), 200
 
 
 # ---------------------------------------------------------------------------

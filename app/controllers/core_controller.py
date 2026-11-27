@@ -1,8 +1,11 @@
 from flask import Blueprint, jsonify
+from flask_login import current_user
 from app.extensions import db
 from app.models.animal import Animal
 from app.models.health import Prescription, Vaccination
+from app.models.isolation import IsolationRecord
 from app.utils import tempo
+from app.utils.publico import flag_ativa
 from app.services.saude import logs_by_prescription, open_booster_filter, split_horarios
 
 core_bp = Blueprint("core", __name__)
@@ -110,7 +113,7 @@ def today_dashboard():
         "atrasada": v.data_reforco < hoje if v.data_reforco else False
     } for v, animal_nome, baia, foto_url in reforcos]
 
-    return jsonify({
+    resposta = {
         "data_referencia": hoje.isoformat(),
         "hora_referencia": hora_atual,
         "kpis": {
@@ -124,4 +127,17 @@ def today_dashboard():
         "total_vacinas_pendentes": len(vacinas_hoje),
         "medicacoes_hoje": medicacoes_hoje,
         "vacinas_hoje": vacinas_hoje
-    }), 200
+    }
+
+    # CP-03 (REQ-36): alertas de estoque só para a Administradora e com a flag ligada.
+    # Flag desligada ou outro perfil -> a chave nem aparece.
+    if flag_ativa("estoque") and current_user.is_authenticated and current_user.is_admin:
+        from app.services.inventory_service import alertas_hoje
+        resposta["estoque"] = alertas_hoje(hoje)
+
+    # CP-05 (REQ-43): isolamentos abertos (qualquer perfil), com o nome do animal, numa consulta.
+    if flag_ativa("isolamento"):
+        resposta["isolamentos"] = [{**r.to_dict(), "animal_nome": r.animal.nome}
+                                   for r in IsolationRecord.query_abertos().all()]
+
+    return jsonify(resposta), 200

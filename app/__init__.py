@@ -148,7 +148,7 @@ def create_app(config_name=None):
     # clara, e não um erro 500. O detalhe técnico fica só no log do servidor.
     from sqlalchemy.exc import DataError, IntegrityError
 
-    from .models.base import AuditoriaImutavel, ExclusaoFisicaProibida
+    from .models.base import AuditoriaImutavel, ExclusaoFisicaProibida, RegistroImutavel
 
     @app.errorhandler(ExclusaoFisicaProibida)
     def physical_delete_error(error):
@@ -159,8 +159,14 @@ def create_app(config_name=None):
 
     @app.errorhandler(AuditoriaImutavel)
     def immutable_audit_error(error):
+        # A regra citada vem do tipo da exceção: RN19 para movimentos de estoque
+        # (`RegistroImutavel`, subclasse) e RN16 para a trilha de auditoria.
         db.session.rollback()
-        app.logger.warning("Alteração da auditoria bloqueada: %s", error)
+        app.logger.warning("Alteração de registro imutável bloqueada: %s", error)
+        if isinstance(error, RegistroImutavel):
+            return _json_error(422, "Registro imutável",
+                               "Movimentos de estoque não podem ser alterados nem apagados; "
+                               "corrija com um novo ajuste (RN19).")
         return _json_error(422, "Auditoria imutável",
                            "A trilha de auditoria não pode ser alterada nem apagada (RN16).")
 
@@ -171,7 +177,7 @@ def create_app(config_name=None):
         # 23001 (restrict_violation): gatilhos do PostgreSQL que protegem RN03 e RN16
         if getattr(getattr(error, "orig", None), "pgcode", None) == "23001":
             return _json_error(422, "Operação não permitida",
-                               "Este registro é protegido: não pode ser apagado nem alterado (RN03, RN16).")
+                               "Este registro é protegido: não pode ser apagado nem alterado (RN03, RN16, RN19).")
         return _json_error(409, "Conflito de dados",
                            "Estes dados conflitam com um registro já existente ou com uma regra do cadastro. "
                            "Atualize a tela, confira as informações e tente novamente.")
